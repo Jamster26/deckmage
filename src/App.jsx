@@ -1,7 +1,12 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import DeckListInput from './DeckListInput'
+import Login from './pages/login'
+import Signup from './pages/signup'
+import Dashboard from './pages/dashboard'
 import { useEffect, useState } from 'react'
 
-function App() {
+// Your existing deck builder component
+function DeckBuilder() {
   const [config, setConfig] = useState({
     embed: false,
     size: 'square',
@@ -39,7 +44,7 @@ function App() {
   }, [])
 
   // Theme configurations
- const themes = {
+  const themes = {
     light: {
       background: config.backgroundColor,
       text: config.textColor,
@@ -74,7 +79,7 @@ function App() {
       maxWidth: '100%',
       padding: '40px'
     },
-  sidebar: {
+    sidebar: {
       maxWidth: '380px',
       padding: '12px'
     }
@@ -83,13 +88,13 @@ function App() {
   const currentLayout = layouts[config.size]
 
   return (
-   <div style={{
+    <div style={{
       background: currentTheme.background,
       color: currentTheme.text,
       fontFamily: config.fontFamily,
       minHeight: '100vh',
-      overflowY: 'auto',  // ✅ Allow vertical scroll
-      overflowX: 'hidden'  // Prevent horizontal scroll
+      overflowY: 'auto',
+      overflowX: 'hidden'
     }}>
       {/* Only show header if NOT embedded */}
       {!config.embed && (
@@ -124,13 +129,27 @@ function App() {
         </>
       )}
       
-   <DeckListInput 
-        theme={{ ...currentTheme, theme: config.theme }} // ✅ Pass theme name
+      <DeckListInput 
+        theme={{ ...currentTheme, theme: config.theme }}
         layout={currentLayout}
         primaryColor={config.primaryColor}
         size={config.size}
       />
     </div>
+  )
+}
+
+// Main App with routing
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<DeckBuilder />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 

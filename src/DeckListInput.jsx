@@ -350,12 +350,106 @@ return (
             )
           })}
 
-          {/* Total Price */}
-<div className="total-price" style={{
+{/* Total Price */}
+          <div className="total-price" style={{
             background: `linear-gradient(135deg, ${adjustBrightness(theme.text, -40)} 0%, ${adjustBrightness(theme.text, -60)} 100%)`
           }}>
-                        TOTAL DECK PRICE: ${calculateTotal()}
+            TOTAL DECK PRICE: ${calculateTotal()}
           </div>
+
+          {/* 🛒 ADD ALL TO BASKET BUTTON */}
+          <div style={{ 
+            marginTop: '25px', 
+            textAlign: 'center',
+            paddingBottom: '30px'
+          }}>
+            <button
+              className="add-all-button"
+                   onClick={() => {
+                const urlParams = new URLSearchParams(window.location.search)
+                const isDemo = urlParams.get('demo') === 'true'
+                const shopId = urlParams.get('shop')
+
+                // Build cart data
+                const cartItems = searchResults.map((result, index) => {
+                  const selectedSet = selectedVersions[index]
+                  return {
+                    cardName: result.cardData.name,
+                    quantity: result.quantity,
+                    setName: selectedSet?.set_name,
+                    setCode: selectedSet?.set_code,
+                    price: parseFloat(selectedSet?.set_price) || 0,
+                    rarity: selectedSet?.set_rarity
+                  }
+                }).filter(item => item.setName)
+
+                console.log('🛒 Preparing to add to cart:', cartItems)
+                console.log('📊 Mode - Demo:', isDemo, '| Shop:', shopId)
+
+                if (isDemo && !shopId) {
+                  // Pure demo mode - just show alert
+                  alert(`✅ Demo Mode\n\n${cartItems.length} cards ready to add\nTotal: $${calculateTotal()}\n\n🔒 This is showing YGOProDeck prices.\n\nUpgrade to connect your real store and enable cart integration!\n\nLearn more: deck-mage.netlify.app`)
+                } else if (shopId === 'demoshop') {
+                  // Demo shop testing mode - send to parent window
+                  console.log('🏪 Demo shop mode - sending to parent window')
+                  window.parent.postMessage({
+                    type: 'DECKMAGE_ADD_TO_CART',
+                    items: cartItems,
+                    total: parseFloat(calculateTotal())
+                  }, '*')
+                  console.log('✅ Sent cart data to parent window')
+                } else if (shopId) {
+                  // Real shop integration - send to parent window
+                  console.log('🏪 Real shop mode - sending to parent window')
+                  window.parent.postMessage({
+                    type: 'DECKMAGE_ADD_TO_CART',
+                    items: cartItems,
+                    total: parseFloat(calculateTotal()),
+                    shopId: shopId
+                  }, '*')
+                  console.log('✅ Sent cart data to parent window')
+                } else {
+                  // Fallback - show alert
+                  alert(`✅ Added ${cartItems.length} cards to basket!\n\nTotal: $${calculateTotal()}\n\n(Cart integration coming soon)`)
+                }
+              }}
+              style={{
+                background: `linear-gradient(135deg, ${primaryColor} 0%, ${adjustBrightness(primaryColor, -20)} 100%)`,
+                color: 'white',
+                border: 'none',
+                padding: '20px 60px',
+                fontSize: '20px',
+                fontWeight: 'bold',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+                transition: 'all 0.3s ease',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-3px)'
+                e.target.style.boxShadow = '0 8px 25px rgba(0,0,0,0.4)'
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)'
+                e.target.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)'
+              }}
+            >
+              🛒 Add All to Basket — ${calculateTotal()}
+            </button>
+            
+            <div style={{ 
+              marginTop: '12px', 
+              fontSize: '0.9rem', 
+              color: theme.text,
+              opacity: 0.7 
+            }}>
+              {searchResults.length} cards • Total: ${calculateTotal()}
+            </div>
+          </div>
+
         </div>
       )}
     </div>
