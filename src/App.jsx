@@ -35,7 +35,6 @@ function App() {
     if (newConfig.embed) {
       document.body.style.margin = '0'
       document.body.style.padding = '0'
-      document.body.style.overflow = 'hidden'
     }
   }, [])
 
@@ -84,11 +83,13 @@ function App() {
   const currentLayout = layouts[config.size]
 
   return (
-    <div style={{
+   <div style={{
       background: currentTheme.background,
       color: currentTheme.text,
       fontFamily: config.fontFamily,
-      minHeight: '100vh'
+      minHeight: '100vh',
+      overflowY: 'auto',  // ✅ Allow vertical scroll
+      overflowX: 'hidden'  // Prevent horizontal scroll
     }}>
       {/* Only show header if NOT embedded */}
       {!config.embed && (
