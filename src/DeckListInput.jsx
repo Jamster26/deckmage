@@ -1,11 +1,24 @@
 import { useState, useEffect } from 'react'
 import './DeckBuilder.css'
 
-function DeckListInput() {
-  const [deckList, setDeckList] = useState('')
+function DeckListInput({ theme, layout, primaryColor, size }) {
+    const [deckList, setDeckList] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [selectedVersions, setSelectedVersions] = useState({})
+
+  // Helper function to darken color for gradients
+  function adjustBrightness(color, percent) {
+    const num = parseInt(color.replace('#', ''), 16)
+    const amt = Math.round(2.55 * percent)
+    const R = (num >> 16) + amt
+    const G = (num >> 8 & 0x00FF) + amt
+    const B = (num & 0x0000FF) + amt
+    return '#' + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 +
+      (G<255?G<1?0:G:255)*0x100 +
+      (B<255?B<1?0:B:255))
+      .toString(16).slice(1)
+  }
 
    // ADD THIS ENTIRE BLOCK — AUTO-RESIZES THE IFRAME WHEN EMBEDDED
   useEffect(() => {
@@ -187,12 +200,24 @@ const searchVariations = [
     setDeckList("3x Blue-Eyes White Dragon\n2x Dark Magician\n1x Red-Eyes Black Dragon\n1x Kuriboh")
   }
 
-  return (
-    <div className="deck-builder-container">
-      <div className="input-section">
-        <h2>Paste Your Deck List</h2>
-        <textarea
+return (
+    <div className="deck-builder-container" style={{
+      maxWidth: layout.maxWidth,
+      margin: '0 auto',
+      padding: layout.padding
+    }}>
+<div className="input-section" style={{
+        background: theme.cardBg,
+        borderColor: theme.border
+      }}>
+<h2 style={{ color: theme.text }}>Paste Your Deck List</h2>
+      <textarea
           className="deck-textarea"
+          style={{
+            background: theme.inputBg,
+            color: theme.inputText,
+            borderColor: theme.border
+          }}
           value={deckList}
           onChange={(e) => setDeckList(e.target.value)}
           placeholder="Example:
@@ -203,9 +228,12 @@ const searchVariations = [
         />
         
         <div className="button-group">
-          <button 
+<button 
             className="search-button"
             onClick={handleParse}
+            style={{
+              background: `linear-gradient(135deg, ${primaryColor} 0%, ${adjustBrightness(primaryColor, -20)} 100%)`
+            }}
           >
             Search Cards
           </button>
@@ -233,13 +261,16 @@ const searchVariations = [
 
       {searchResults.length > 0 && (
         <div className="results-container">
-          <h3 className="results-header">Found {searchResults.length} cards:</h3>
+<h3 className="results-header" style={{ color: theme.text }}>Found {searchResults.length} cards:</h3>
           {searchResults.map((result, index) => {
             const selectedVersion = selectedVersions[index]
             
             return (
-              <div key={index} className="card-result">
-                <div className="card-content">
+<div key={index} className="card-result" style={{
+                background: theme.cardBg,
+                borderColor: theme.border
+              }}>
+                                <div className="card-content">
                   {/* Card Image */}
                   {result.cardData.card_images && (
                     <img 
@@ -251,14 +282,16 @@ const searchVariations = [
                   
                   {/* Card Info */}
                   <div className="card-info">
-                    <h3 className="card-title">
-                      {result.quantity}x {result.cardData.name}
+<h3 className="card-title" style={{ color: theme.text }}>
+                        {result.quantity}x {result.cardData.name}
                     </h3>
                     
                     {/* Selected Version */}
                     {selectedVersion && (
-                      <div className="selected-version">
-                        <div><strong>✓ SELECTED:</strong> {selectedVersion.set_name}</div>
+<div className="selected-version" style={{
+                        background: `linear-gradient(135deg, ${primaryColor} 0%, ${adjustBrightness(primaryColor, -20)} 100%)`
+                      }}>
+                                                <div><strong>✓ SELECTED:</strong> {selectedVersion.set_name}</div>
                         <div>Rarity: {selectedVersion.set_rarity} | Price: ${selectedVersion.set_price} each</div>
                         <div className="subtotal">
                           Subtotal: ${(parseFloat(selectedVersion.set_price) * result.quantity).toFixed(2)}
@@ -269,22 +302,26 @@ const searchVariations = [
                     {/* Available Sets/Printings */}
                     {result.cardData.card_sets && result.cardData.card_sets.length > 1 && (
                       <div className="other-versions">
-                        <div className="other-versions-title">Other Available Versions:</div>
-                        <div className="versions-list">
+<div className="other-versions-title" style={{ color: theme.text }}>Other Available Versions:</div>                        <div className="versions-list">
                           {result.cardData.card_sets
                             .filter(set => set.set_code !== selectedVersion?.set_code)
                             .map((set, setIndex) => (
-                              <div 
+                           <div 
                                 key={setIndex} 
                                 className="version-option"
                                 onClick={() => selectVersion(index, set)}
+                                style={{
+                                  background: theme.inputBg,
+                                  borderColor: theme.border,
+                                  color: theme.text
+                                }}
                               >
                                 <div className="version-name">{set.set_name}</div>
                                 <div className="version-details">
                                   Code: {set.set_code} | Rarity: {set.set_rarity}
                                 </div>
-                                <div className="version-price">
-                                  Price: ${set.set_price || 'N/A'} each
+<div className="version-price" style={{ color: primaryColor }}>
+                                    Price: ${set.set_price || 'N/A'} each
                                 </div>
                               </div>
                             ))}
@@ -298,8 +335,10 @@ const searchVariations = [
           })}
 
           {/* Total Price */}
-          <div className="total-price">
-            TOTAL DECK PRICE: ${calculateTotal()}
+<div className="total-price" style={{
+            background: `linear-gradient(135deg, ${adjustBrightness(theme.text, -40)} 0%, ${adjustBrightness(theme.text, -60)} 100%)`
+          }}>
+                        TOTAL DECK PRICE: ${calculateTotal()}
           </div>
         </div>
       )}

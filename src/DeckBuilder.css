@@ -282,3 +282,19 @@
 .embed-mode body {
   margin: 0;
 }
+/* Theme-aware hover states */
+.version-option:hover {
+  border-color: var(--primary-color, #2a9d8f) !important;
+}
+
+/* Dark theme text fixes */
+.version-name,
+.version-details {
+  color: inherit;
+}
+
+/* Ensure buttons maintain visibility */
+.clear-button,
+.example-button {
+  opacity: 1;
+}
