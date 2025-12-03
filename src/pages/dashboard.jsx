@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate } from 'react-router-dom'
+import { initiateShopifyOAuth } from '../utils/shopify'
 
 function Dashboard() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [shopDomain, setShopDomain] = useState('')
+  const [showShopInput, setShowShopInput] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -22,6 +25,24 @@ function Dashboard() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     navigate('/login')
+  }
+
+  const handleConnectShopify = () => {
+    if (!shopDomain) {
+      alert('Please enter your shop domain')
+      return
+    }
+    
+    // Clean up the domain (remove https://, .myshopify.com if included)
+    let cleanDomain = shopDomain.toLowerCase().trim()
+    cleanDomain = cleanDomain.replace('https://', '').replace('http://', '')
+    
+    // If they didn't include .myshopify.com, add it
+    if (!cleanDomain.includes('.myshopify.com')) {
+      cleanDomain = `${cleanDomain}.myshopify.com`
+    }
+    
+    initiateShopifyOAuth(cleanDomain)
   }
 
   if (loading) {
@@ -144,18 +165,76 @@ function Dashboard() {
           <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '20px' }}>
             Quick Actions
           </h3>
-          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <button style={{
-              padding: '12px 24px',
-              background: 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
-              border: 'none',
-              borderRadius: '8px',
-              color: '#0a0a1f',
-              fontWeight: 'bold',
-              cursor: 'pointer'
-            }}>
-              Connect Store
+          
+          {!showShopInput ? (
+            <button 
+              onClick={() => setShowShopInput(true)}
+              style={{
+                padding: '12px 24px',
+                background: 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#0a0a1f',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              Connect Shopify Store
             </button>
+          ) : (
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>
+                Enter your Shopify store domain:
+              </label>
+              <input
+                type="text"
+                value={shopDomain}
+                onChange={(e) => setShopDomain(e.target.value)}
+                placeholder="your-store.myshopify.com"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: '#0a0a1f',
+                  border: '1px solid #2d2d44',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '14px',
+                  marginBottom: '12px'
+                }}
+              />
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={handleConnectShopify}
+                  style={{
+                    padding: '12px 24px',
+                    background: 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#0a0a1f',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Connect
+                </button>
+                <button
+                  onClick={() => setShowShopInput(false)}
+                  style={{
+                    padding: '12px 24px',
+                    background: 'transparent',
+                    border: '1px solid #2d2d44',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '16px' }}>
             <button style={{
               padding: '12px 24px',
               background: 'transparent',

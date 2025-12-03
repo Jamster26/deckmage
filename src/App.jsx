@@ -4,6 +4,8 @@ import Login from './pages/login'
 import Signup from './pages/signup'
 import Dashboard from './pages/dashboard'
 import { useEffect, useState } from 'react'
+import ShopifyCallback from './pages/ShopifyCallback'
+
 
 // Your existing deck builder component
 function DeckBuilder() {
@@ -148,6 +150,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/auth/shopify/callback" element={<ShopifyCallback />} />
+
       </Routes>
     </BrowserRouter>
   )
