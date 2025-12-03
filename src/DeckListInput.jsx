@@ -32,9 +32,9 @@ function DeckListInput() {
     
     for (const card of parsedCards) {
       try {
-        const response = await fetch(
-          `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(card.cardName)}`
-        )
+       const response = await fetch(
+  `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(card.cardName)}`
+)
         const data = await response.json()
         
         if (data.data && data.data.length > 0) {
