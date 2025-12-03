@@ -7,76 +7,128 @@ function DeckListInput() {
   const [loading, setLoading] = useState(false)
   const [selectedVersions, setSelectedVersions] = useState({})
 
-  const handleParse = async () => {
-    // Split deck list by lines
-    const lines = deckList.split('\n').filter(line => line.trim() !== '')
+ const handleParse = async () => {
+  const lines = deckList.split('\n').filter(line => line.trim() !== '')
+  
+  const parsedCards = lines.map(line => {
+  const match = line.match(/^(\d+)?\s*[x×]?\s*(.+)$/i)
+  
+  if (match) {
+    const quantity = match[1] ? parseInt(match[1]) : 1
+    let cardName = match[2].trim()
     
-    // Parse each line
-    const parsedCards = lines.map(line => {
-      const match = line.match(/^(\d+)?\s*[x×]?\s*(.+)$/i)
-      
-      if (match) {
-        const quantity = match[1] ? parseInt(match[1]) : 1
-        const cardName = match[2].trim()
-        
-        return { quantity, cardName }
-      }
-      return null
-    }).filter(card => card !== null)
+    // 👇 Convert ALL fancy apostrophes → straight apostrophe
+    cardName = cardName.replace(/[\u2018\u2019\u201A\u201B\u2032\u2035''`´]/g, "'")
     
-    console.log('Parsed cards:', parsedCards)
-    
-    // Now search for each card
-    setLoading(true)
-    const results = []
-    
-    for (const card of parsedCards) {
-      try {
-       const response = await fetch(
-  `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(card.cardName)}`
-)
-        const data = await response.json()
-        
-        if (data.data && data.data.length > 0) {
-          results.push({
-            ...card,
-            cardData: data.data[0] // Get first matching card
-          })
-        }
-      } catch (error) {
-        console.error(`Error fetching ${card.cardName}:`, error)
-      }
-    }
-    
-    setSearchResults(results)
-
-    // Auto-select cheapest version for each card (ignore $0 prices)
-    const autoSelected = {}
-    results.forEach((result, index) => {
-      if (result.cardData.card_sets && result.cardData.card_sets.length > 0) {
-        // Find cheapest set (ignore $0 prices)
-        const cheapest = result.cardData.card_sets.reduce((min, set) => {
-          const price = parseFloat(set.set_price) || 0
-          const minPrice = parseFloat(min.set_price) || 0
-          
-          // Skip if price is 0 (likely not available)
-          if (price === 0) return min
-          
-          // If min is 0, use current set
-          if (minPrice === 0) return set
-          
-          // Otherwise, return cheaper option
-          return price < minPrice ? set : min
-        })
-        autoSelected[index] = cheapest
-      }
-    })
-    setSelectedVersions(autoSelected)
-
-    setLoading(false)
-    console.log('Search results:', results)
-    console.log('Auto-selected versions:', autoSelected)
+    return { quantity, cardName }
   }
+  return null
+}).filter(card => card !== null)
+  
+  console.log('Parsed cards:', parsedCards)
+  
+  setLoading(true)
+  const results = []
+  const notFound = []
+  
+  for (const card of parsedCards) {
+    try {
+      let cardData = null
+      
+    // CREATE SEARCH VARIATIONS (prioritize straight apostrophe!)
+const searchVariations = [
+  card.cardName,                                    // Original (whatever user typed)
+  card.cardName.replace(/[''`´]/g, "'"),           // Convert ALL apostrophes → straight '
+  card.cardName.replace(/['']/g, "'"),             // Fix curly ' → straight '
+  card.cardName.replace(/['']/g, "'"),             // Fix curly ' → straight '
+  `The ${card.cardName}`,                           // Add "The"
+  `The ${card.cardName.replace(/[''`´]/g, "'")}`,  // "The" + straight apostrophe
+]
+      
+      // TRY EXACT MATCH with all variations
+      for (const variation of searchVariations) {
+        if (cardData) break // Already found, stop searching
+        
+        try {
+          const response = await fetch(
+            `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(variation)}`
+          )
+          const data = await response.json()
+          
+          if (data.data && data.data.length > 0) {
+            cardData = data.data[0]
+            console.log(`✅ Found (exact): ${card.cardName} → ${data.data[0].name}`)
+            break
+          }
+        } catch (err) {
+          // This variation didn't work, try next
+          continue
+        }
+      }
+      
+      // TRY FUZZY as last resort
+      if (!cardData) {
+        try {
+          const fuzzyResponse = await fetch(
+            `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(card.cardName)}`
+          )
+          const fuzzyData = await fuzzyResponse.json()
+          
+          if (fuzzyData.data && fuzzyData.data.length > 0) {
+            cardData = fuzzyData.data[0]
+            console.log(`⚠️ Found (fuzzy): ${card.cardName} → ${fuzzyData.data[0].name}`)
+          }
+        } catch (err) {
+          // All methods failed
+        }
+      }
+      
+      // Add to results or mark as not found
+      if (cardData) {
+        results.push({
+          ...card,
+          cardData: cardData
+        })
+      } else {
+        console.warn(`❌ NOT FOUND: ${card.cardName}`)
+        notFound.push(card.cardName)
+      }
+      
+    } catch (error) {
+      console.error(`❌ ERROR fetching ${card.cardName}:`, error)
+      notFound.push(card.cardName)
+    }
+  }
+  
+  console.log(`Found ${results.length}/${parsedCards.length} cards`)
+  if (notFound.length > 0) {
+    console.warn('Cards not found:', notFound)
+  }
+  
+  setSearchResults(results)
+
+  // Auto-select cheapest version for each card (ignore $0 prices)
+  const autoSelected = {}
+  results.forEach((result, index) => {
+    if (result.cardData.card_sets && result.cardData.card_sets.length > 0) {
+      const cheapest = result.cardData.card_sets.reduce((min, set) => {
+        const price = parseFloat(set.set_price) || 0
+        const minPrice = parseFloat(min.set_price) || 0
+        
+        if (price === 0) return min
+        if (minPrice === 0) return set
+        
+        return price < minPrice ? set : min
+      })
+      autoSelected[index] = cheapest
+    }
+  })
+  setSelectedVersions(autoSelected)
+
+  setLoading(false)
+  console.log('Search results:', results)
+  console.log('Auto-selected versions:', autoSelected)
+}
 
   const selectVersion = (resultIndex, set) => {
     setSelectedVersions(prev => ({
