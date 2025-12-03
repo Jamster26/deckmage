@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Card Shop | DeckMage Testing</title>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'primary': '#00ff9d',
+            'secondary': '#2a9d8f',
+            'dark-bg': '#0a0a1f',
+            'card-bg': '#1a1a2e',
+            'border': '#2d2d44',
+            'accent': '#e63946'
+          },
+          fontFamily: {
+            'display': ['Cinzel', 'serif'],
+            'body': ['Inter', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0a1f;
+      color: #ffffff;
+    }
+    
+    .glow-green {
+      box-shadow: 0 0 20px rgba(0, 255, 157, 0.3);
+    }
+    
+    .glow-green-hover:hover {
+      box-shadow: 0 0 30px rgba(0, 255, 157, 0.5);
+    }
+    
+    .card-hover {
+      transition: all 0.3s ease;
+    }
+    
+    .card-hover:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 10px 40px rgba(0, 255, 157, 0.3);
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Navbar -->
+  <nav class="bg-card-bg border-b-2 border-primary shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-20">
+        
+        <!-- Logo -->
+        <div class="flex items-center gap-3">
+          <div class="text-4xl">🃏</div>
+          <div>
+            <div class="font-display text-2xl font-bold text-primary">CARD VAULT</div>
+            <div class="text-xs text-gray-400 -mt-1">Demo Testing Store</div>
+          </div>
+        </div>
+        
+        <!-- Nav Links -->
+        <div class="hidden md:flex items-center gap-8">
+          <a href="#home" class="text-white hover:text-primary transition font-medium">Home</a>
+          <a href="#features" class="text-white hover:text-primary transition font-medium">Features</a>
+          <a href="deck-builder.html" class="text-white hover:text-primary transition font-medium">Deck Builder</a>
+          <a href="cart.html" class="relative text-white hover:text-primary transition font-medium">
+            Cart
+            <span id="nav-cart-badge" class="absolute -top-2 -right-6 bg-accent text-white text-xs font-bold px-2 py-1 rounded-full">0</span>
+          </a>
+        </div>
+        
+        <!-- Mobile Menu Button -->
+        <button class="md:hidden text-white">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+        </button>
+        
+      </div>
+    </div>
+  </nav>
+  
+  <!-- Hero Section -->
+  <section id="home" class="relative overflow-hidden py-24 sm:py-32">
+    <!-- Animated Background -->
+    <div class="absolute inset-0 bg-gradient-to-br from-primary/10 via-dark-bg to-secondary/10"></div>
+    <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-20"></div>
+    
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      
+      <!-- Badge -->
+      <div class="inline-flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-full px-4 py-2 mb-8">
+        <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+        <span class="text-sm font-medium text-primary">Testing Environment • DeckMage Integration</span>
+      </div>
+      
+      <!-- Heading -->
+      <h1 class="font-display text-5xl sm:text-6xl lg:text-7xl font-black mb-6">
+        Build Your <span class="text-primary glow-green">Perfect Deck</span>
+      </h1>
+      
+      <p class="text-xl text-gray-300 max-w-3xl mx-auto mb-12">
+        Professional deck builder with real-time pricing, instant cart integration, and seamless checkout. Test the full DeckMage experience.
+      </p>
+      
+      <!-- CTA Buttons -->
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <a href="deck-builder.html" class="group bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-dark-bg font-bold px-8 py-4 rounded-xl text-lg transition glow-green-hover inline-flex items-center gap-3">
+          <span>Try Deck Builder</span>
+          <svg class="w-5 h-5 group-hover:translate-x-1 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+          </svg>
+        </a>
+        
+        <a href="#features" class="border-2 border-primary text-primary hover:bg-primary hover:text-dark-bg font-bold px-8 py-4 rounded-xl text-lg transition inline-flex items-center gap-3">
+          <span>Learn More</span>
+        </a>
+      </div>
+      
+      <!-- Stats -->
+      <div class="grid grid-cols-3 gap-8 max-w-2xl mx-auto mt-20">
+        <div>
+          <div class="text-4xl font-bold text-primary">1000+</div>
+          <div class="text-sm text-gray-400 mt-1">Cards in Stock</div>
+        </div>
+        <div>
+          <div class="text-4xl font-bold text-primary">< 60s</div>
+          <div class="text-sm text-gray-400 mt-1">Deck Build Time</div>
+        </div>
+        <div>
+          <div class="text-4xl font-bold text-primary">100%</div>
+          <div class="text-sm text-gray-400 mt-1">Real Prices</div>
+        </div>
+      </div>
+      
+    </div>
+  </section>
+  
+  <!-- Featured Products -->
+  <section class="py-20 bg-gradient-to-b from-dark-bg to-card-bg/50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="text-center mb-12">
+        <h2 class="font-display text-4xl font-bold mb-4">
+          Featured <span class="text-primary">Products</span>
+        </h2>
+        <p class="text-gray-400">Popular cards currently in stock</p>
+      </div>
+      
+      <div id="featured-products" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        <!-- Products will be loaded via JavaScript -->
+      </div>
+      
+    </div>
+  </section>
+  
+  <!-- Features Section -->
+  <section id="features" class="py-20 bg-card-bg/30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="text-center mb-16">
+        <h2 class="font-display text-4xl font-bold mb-4">
+          Why Use <span class="text-primary">DeckMage</span>?
+        </h2>
+        <p class="text-gray-400">Professional deck building for modern TCG shops</p>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        
+        <!-- Feature 1 -->
+        <div class="bg-card-bg border border-border rounded-2xl p-8 hover:border-primary transition card-hover">
+          <div class="text-5xl mb-4">⚡</div>
+          <h3 class="font-display text-2xl font-bold mb-3 text-primary">Instant Results</h3>
+          <p class="text-gray-300">
+            Paste any deck list and get instant card matching with all available versions and prices.
+          </p>
+        </div>
+        
+        <!-- Feature 2 -->
+        <div class="bg-card-bg border border-border rounded-2xl p-8 hover:border-primary transition card-hover">
+          <div class="text-5xl mb-4">💰</div>
+          <h3 class="font-display text-2xl font-bold mb-3 text-primary">Real Pricing</h3>
+          <p class="text-gray-300">
+            See your actual shop prices, not generic API data. Auto-selects cheapest or best-sellers.
+          </p>
+        </div>
+        
+        <!-- Feature 3 -->
+        <div class="bg-card-bg border border-border rounded-2xl p-8 hover:border-primary transition card-hover">
+          <div class="text-5xl mb-4">🛒</div>
+          <h3 class="font-display text-2xl font-bold mb-3 text-primary">Easy Cart</h3>
+          <p class="text-gray-300">
+            One-click add entire deck to cart. Seamless integration with your existing checkout.
+          </p>
+        </div>
+        
+      </div>
+      
+    </div>
+  </section>
+  
+  <!-- CTA Section -->
+  <section class="py-20 bg-gradient-to-r from-primary/10 to-secondary/10">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      
+      <h2 class="font-display text-4xl font-bold mb-6">
+        Ready to test the deck builder?
+      </h2>
+      
+      <p class="text-xl text-gray-300 mb-8">
+        Experience the full flow from deck paste to cart checkout
+      </p>
+      
+      <a href="deck-builder.html" class="inline-flex items-center gap-3 bg-primary hover:bg-primary/90 text-dark-bg font-bold px-10 py-5 rounded-xl text-lg transition glow-green-hover">
+        <span>Start Building Decks</span>
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+        </svg>
+      </a>
+      
+    </div>
+  </section>
+  
+  <!-- Footer -->
+  <footer class="bg-card-bg border-t border-border py-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+        
+        <!-- Brand -->
+        <div>
+          <div class="flex items-center gap-2 mb-4">
+            <div class="text-3xl">🃏</div>
+            <div class="font-display text-xl font-bold text-primary">CARD VAULT</div>
+          </div>
+          <p class="text-gray-400 text-sm">
+            Demo testing store for DeckMage integration. All products and transactions are simulated.
+          </p>
+        </div>
+        
+        <!-- Links -->
+        <div>
+          <h4 class="font-bold mb-4 text-primary">Quick Links</h4>
+          <ul class="space-y-2 text-gray-400 text-sm">
+            <li><a href="#home" class="hover:text-primary transition">Home</a></li>
+            <li><a href="deck-builder.html" class="hover:text-primary transition">Deck Builder</a></li>
+            <li><a href="cart.html" class="hover:text-primary transition">Cart</a></li>
+            <li><a href="#features" class="hover:text-primary transition">Features</a></li>
+          </ul>
+        </div>
+        
+        <!-- Info -->
+        <div>
+          <h4 class="font-bold mb-4 text-primary">Testing Info</h4>
+          <ul class="space-y-2 text-gray-400 text-sm">
+            <li>✅ Real cart integration</li>
+            <li>✅ Shop-specific pricing</li>
+            <li>✅ PostMessage communication</li>
+            <li>✅ Mobile responsive</li>
+          </ul>
+        </div>
+        
+      </div>
+      
+      <div class="border-t border-border pt-8 text-center text-gray-400 text-sm">
+        <p>© 2025 DeckMage Demo Shop • Testing Environment • Not a real store</p>
+        <p class="mt-2">Powered by <span class="text-primary font-bold">DeckMage</span></p>
+      </div>
+      
+    </div>
+  </footer>
+  
+  <script>
+    // Load products and update cart count
+    let products = []
+    
+    fetch('/demo-shop/products.json')
+      .then(r => r.json())
+      .then(data => {
+        products = data.products
+        renderFeaturedProducts()
+      })
+    
+    function renderFeaturedProducts() {
+      const container = document.getElementById('featured-products')
+      const featured = products.slice(0, 4) // First 4 products
+      
+      container.innerHTML = featured.map(product => `
+        <div class="bg-card-bg border border-border rounded-2xl overflow-hidden card-hover">
+          <div class="aspect-square bg-dark-bg p-6 flex items-center justify-center">
+            <img src="${product.image}" alt="${product.card_name}" class="w-full h-full object-contain">
+          </div>
+          <div class="p-6">
+            <h3 class="font-bold text-lg mb-2">${product.card_name}</h3>
+            <p class="text-sm text-gray-400 mb-3">${product.set_name}</p>
+            <div class="flex justify-between items-center">
+              <span class="text-2xl font-bold text-primary">$${product.price}</span>
+              <span class="text-xs text-gray-500">${product.stock} in stock</span>
+            </div>
+          </div>
+        </div>
+      `).join('')
+    }
+    
+    function updateCartBadge() {
+      const cart = JSON.parse(localStorage.getItem('demoCart') || '[]')
+      const total = cart.reduce((sum, item) => sum + item.quantity, 0)
+      document.getElementById('nav-cart-badge').textContent = total
+    }
+    
+    updateCartBadge()
+    window.addEventListener('storage', updateCartBadge)
+  </script>
+  
+</body>
+</html>

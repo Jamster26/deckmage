@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shopping Cart | Card Vault Demo</title>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'primary': '#00ff9d',
+            'secondary': '#2a9d8f',
+            'dark-bg': '#0a0a1f',
+            'card-bg': '#1a1a2e',
+            'border': '#2d2d44',
+            'accent': '#e63946'
+          },
+          fontFamily: {
+            'display': ['Cinzel', 'serif'],
+            'body': ['Inter', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0a1f;
+      color: #ffffff;
+    }
+    
+    .glow-green {
+      box-shadow: 0 0 20px rgba(0, 255, 157, 0.3);
+    }
+    
+    .glow-green-hover:hover {
+      box-shadow: 0 0 30px rgba(0, 255, 157, 0.5);
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Navbar -->
+  <nav class="bg-card-bg border-b-2 border-primary shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-20">
+        
+        <!-- Logo -->
+        <a href="index.html" class="flex items-center gap-3 hover:opacity-80 transition">
+          <div class="text-4xl">🃏</div>
+          <div>
+            <div class="font-display text-2xl font-bold text-primary">CARD VAULT</div>
+            <div class="text-xs text-gray-400 -mt-1">Demo Testing Store</div>
+          </div>
+        </a>
+        
+        <!-- Nav Links -->
+        <div class="hidden md:flex items-center gap-8">
+          <a href="index.html" class="text-white hover:text-primary transition font-medium">Home</a>
+          <a href="index.html#features" class="text-white hover:text-primary transition font-medium">Features</a>
+          <a href="deck-builder.html" class="text-white hover:text-primary transition font-medium">Deck Builder</a>
+          <a href="cart.html" class="text-primary font-bold">
+            Cart
+            <span id="nav-cart-badge" class="absolute -top-2 -right-6 bg-accent text-white text-xs font-bold px-2 py-1 rounded-full">0</span>
+          </a>
+        </div>
+        
+        <!-- Mobile Menu Button -->
+        <button class="md:hidden text-white">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+        </button>
+        
+      </div>
+    </div>
+  </nav>
+  
+  <!-- Page Header -->
+  <section class="bg-gradient-to-r from-primary/10 to-secondary/10 py-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h1 class="font-display text-5xl font-bold text-center mb-4">
+        <span class="text-primary">Shopping Cart</span>
+      </h1>
+      <p class="text-center text-gray-300">
+        Review your deck and proceed to checkout
+      </p>
+    </div>
+  </section>
+  
+  <!-- Cart Content -->
+  <section class="py-12 min-h-screen">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <!-- Cart Items (Left Column) -->
+        <div class="lg:col-span-2">
+          
+          <!-- Empty Cart State -->
+          <div id="empty-cart" class="hidden bg-card-bg border border-border rounded-2xl p-12 text-center">
+            <div class="text-6xl mb-6">🛒</div>
+            <h2 class="font-display text-3xl font-bold mb-4">Your cart is empty</h2>
+            <p class="text-gray-400 mb-8">
+              Start building your deck to add cards to your cart
+            </p>
+            <a href="deck-builder.html" class="inline-block bg-primary hover:bg-primary/90 text-dark-bg font-bold px-8 py-4 rounded-xl transition glow-green-hover">
+              Go to Deck Builder
+            </a>
+          </div>
+          
+          <!-- Cart Items List -->
+          <div id="cart-items" class="space-y-4">
+            <!-- Items will be loaded via JavaScript -->
+          </div>
+          
+        </div>
+        
+        <!-- Order Summary (Right Column) -->
+        <div class="lg:col-span-1">
+          <div class="bg-card-bg border border-border rounded-2xl p-6 sticky top-24">
+            
+            <h2 class="font-display text-2xl font-bold mb-6 text-primary">Order Summary</h2>
+            
+            <div class="space-y-4 mb-6">
+              <div class="flex justify-between text-gray-300">
+                <span>Subtotal:</span>
+                <span id="subtotal">$0.00</span>
+              </div>
+              <div class="flex justify-between text-gray-300">
+                <span>Shipping:</span>
+                <span id="shipping">$5.00</span>
+              </div>
+              <div class="flex justify-between text-gray-300">
+                <span>Tax (estimated):</span>
+                <span id="tax">$0.00</span>
+              </div>
+              
+              <div class="border-t border-border pt-4">
+                <div class="flex justify-between text-2xl font-bold">
+                  <span class="text-primary">Total:</span>
+                  <span class="text-primary" id="total">$0.00</span>
+                </div>
+              </div>
+            </div>
+            
+            <button 
+              id="checkout-btn"
+              class="w-full bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-dark-bg font-bold py-4 rounded-xl transition glow-green-hover mb-4">
+              Proceed to Checkout
+            </button>
+            
+            <a href="deck-builder.html" class="block text-center text-primary hover:text-primary/80 text-sm transition">
+              ← Continue Building Decks
+            </a>
+            
+            <div class="mt-6 p-4 bg-primary/10 border border-primary/30 rounded-xl">
+              <div class="flex items-start gap-3">
+                <div class="text-xl">ℹ️</div>
+                <div class="text-xs text-gray-300">
+                  <strong class="text-primary">Demo Mode:</strong> This is a testing environment. No real transactions will occur.
+                </div>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+  </section>
+  
+  <!-- Footer -->
+  <footer class="bg-card-bg border-t border-border py-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div class="flex items-center justify-center gap-2 mb-4">
+        <div class="text-3xl">🃏</div>
+        <div class="font-display text-xl font-bold text-primary">CARD VAULT</div>
+      </div>
+      <p class="text-gray-400 text-sm mb-2">
+        Demo testing store for DeckMage integration
+      </p>
+      <p class="text-gray-500 text-xs">
+        © 2025 DeckMage • Not a real store • Testing purposes only
+      </p>
+    </div>
+  </footer>
+  
+  <script>
+    let cart = []
+    
+    function loadCart() {
+      cart = JSON.parse(localStorage.getItem('demoCart') || '[]')
+      renderCart()
+      updateCartCount()
+    }
+    
+    function renderCart() {
+      const cartItemsEl = document.getElementById('cart-items')
+      const emptyCartEl = document.getElementById('empty-cart')
+      
+      if (cart.length === 0) {
+        cartItemsEl.innerHTML = ''
+        emptyCartEl.classList.remove('hidden')
+        updateTotals()
+        return
+      }
+      
+      emptyCartEl.classList.add('hidden')
+      
+      cartItemsEl.innerHTML = cart.map((item, index) => `
+        <div class="bg-card-bg border border-border rounded-2xl p-6 hover:border-primary transition">
+          <div class="flex gap-6">
+            
+            <!-- Card Image -->
+            <div class="flex-shrink-0">
+              <img src="${item.image}" alt="${item.name}" class="w-32 h-32 object-contain bg-dark-bg rounded-xl p-2">
+            </div>
+            
+            <!-- Card Info -->
+            <div class="flex-1">
+              <h3 class="font-bold text-xl mb-2">${item.name}</h3>
+              <p class="text-sm text-gray-400 mb-1">${item.setName} (${item.setCode})</p>
+              <p class="text-xs text-gray-500 mb-3">${item.rarity}</p>
+              
+              <div class="flex items-center justify-between">
+                <!-- Quantity Controls -->
+                <div class="flex items-center gap-3">
+                  <button 
+                    onclick="updateQuantity(${index}, -1)"
+                    class="w-8 h-8 bg-dark-bg hover:bg-accent border border-border hover:border-accent rounded-lg flex items-center justify-center transition font-bold">
+                    −
+                  </button>
+                  <span class="font-bold text-lg w-8 text-center">${item.quantity}</span>
+                  <button 
+                    onclick="updateQuantity(${index}, 1)"
+                    class="w-8 h-8 bg-dark-bg hover:bg-primary border border-border hover:border-primary rounded-lg flex items-center justify-center transition font-bold">
+                    +
+                  </button>
+                </div>
+                
+                <!-- Price -->
+                <div class="text-right">
+                  <div class="text-sm text-gray-400">$${item.price.toFixed(2)} each</div>
+                  <div class="text-xl font-bold text-primary">$${(item.price * item.quantity).toFixed(2)}</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Remove Button -->
+            <button 
+              onclick="removeItem(${index})"
+              class="flex-shrink-0 text-gray-400 hover:text-accent transition">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+            
+          </div>
+        </div>
+      `).join('')
+      
+      updateTotals()
+    }
+    
+    function updateQuantity(index, change) {
+      cart[index].quantity += change
+      
+      if (cart[index].quantity <= 0) {
+        cart.splice(index, 1)
+      }
+      
+      saveCart()
+      renderCart()
+    }
+    
+    function removeItem(index) {
+      if (confirm('Remove this card from your cart?')) {
+        cart.splice(index, 1)
+        saveCart()
+        renderCart()
+      }
+    }
+    
+    function updateTotals() {
+      const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      const shipping = cart.length > 0 ? 5.00 : 0
+      const tax = subtotal * 0.08 // 8% tax
+      const total = subtotal + shipping + tax
+      
+      document.getElementById('subtotal').textContent = `$${subtotal.toFixed(2)}`
+      document.getElementById('shipping').textContent = cart.length > 0 ? `$${shipping.toFixed(2)}` : 'Free'
+      document.getElementById('tax').textContent = `$${tax.toFixed(2)}`
+      document.getElementById('total').textContent = `$${total.toFixed(2)}`
+    }
+    
+    function updateCartCount() {
+      const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
+      document.getElementById('nav-cart-badge').textContent = totalItems
+    }
+    
+    function saveCart() {
+      localStorage.setItem('demoCart', JSON.stringify(cart))
+      window.dispatchEvent(new Event('storage'))
+    }
+    
+    // Checkout button
+    document.getElementById('checkout-btn').addEventListener('click', () => {
+      if (cart.length === 0) {
+        alert('Your cart is empty!')
+        return
+      }
+      
+      const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) + 5 + (cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 0.08)
+      
+      alert(`🎉 Demo Checkout\n\nOrder Total: $${total.toFixed(2)}\n${cart.reduce((sum, item) => sum + item.quantity, 0)} items\n\nThis is a test environment - no real payment will be processed.\n\nIn production, this would redirect to your payment processor (Stripe, PayPal, etc.)`)
+    })
+    
+    // Load cart on page load
+    loadCart()
+    
+    // Listen for cart updates from other tabs
+    window.addEventListener('storage', loadCart)
+  </script>
+  
+</body>
+</html>

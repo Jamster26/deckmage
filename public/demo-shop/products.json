@@ -1,0 +1,104 @@
+{
+  "products": [
+    {
+      "id": "prod_001",
+      "card_name": "Blue-Eyes White Dragon",
+      "set_code": "LOB-001",
+      "set_name": "Legend of Blue Eyes White Dragon",
+      "rarity": "Ultra Rare",
+      "price": 12.99,
+      "stock": 5,
+      "image": "https://images.ygoprodeck.com/images/cards/89631139.jpg"
+    },
+    {
+      "id": "prod_002",
+      "card_name": "Blue-Eyes White Dragon",
+      "set_code": "SDK-001",
+      "set_name": "Starter Deck: Kaiba",
+      "rarity": "Ultra Rare",
+      "price": 8.99,
+      "stock": 12,
+      "image": "https://images.ygoprodeck.com/images/cards/89631139.jpg"
+    },
+    {
+      "id": "prod_003",
+      "card_name": "Blue-Eyes White Dragon",
+      "set_code": "LCKC-EN001",
+      "set_name": "Legendary Collection Kaiba",
+      "rarity": "Ultra Rare",
+      "price": 6.99,
+      "stock": 20,
+      "image": "https://images.ygoprodeck.com/images/cards/89631139.jpg"
+    },
+    {
+      "id": "prod_004",
+      "card_name": "Dark Magician",
+      "set_code": "LOB-005",
+"set_name": "Legend of Blue Eyes White Dragon",
+"rarity": "Ultra Rare",
+"price": 15.99,
+"stock": 3,
+"image": "https://images.ygoprodeck.com/images/cards/46986414.jpg"
+},
+{
+"id": "prod_005",
+"card_name": "Dark Magician",
+"set_code": "SDY-006",
+"set_name": "Starter Deck: Yugi",
+"rarity": "Ultra Rare",
+"price": 9.99,
+"stock": 8,
+"image": "https://images.ygoprodeck.com/images/cards/46986414.jpg"
+},
+{
+"id": "prod_006",
+"card_name": "Dark Magician",
+"set_code": "YGLD-ENA41",
+"set_name": "Yugi's Legendary Decks",
+"rarity": "Common",
+"price": 4.99,
+"stock": 25,
+"image": "https://images.ygoprodeck.com/images/cards/46986414.jpg"
+},
+{
+"id": "prod_007",
+"card_name": "Red-Eyes Black Dragon",
+"set_code": "LOB-070",
+"set_name": "Legend of Blue Eyes White Dragon",
+"rarity": "Ultra Rare",
+"price": 11.99,
+"stock": 6,
+"image": "https://images.ygoprodeck.com/images/cards/74677422.jpg"
+},
+{
+"id": "prod_008",
+"card_name": "Red-Eyes Black Dragon",
+"set_code": "SDJ-001",
+"set_name": "Starter Deck: Joey",
+"rarity": "Ultra Rare",
+"price": 7.99,
+"stock": 15,
+"image": "https://images.ygoprodeck.com/images/cards/74677422.jpg"
+},
+{
+"id": "prod_009",
+"card_name": "Kuriboh",
+"set_code": "MRD-074",
+"set_name": "Metal Raiders",
+"rarity": "Common",
+"price": 0.50,
+"stock": 50,
+"image": "https://images.ygoprodeck.com/images/cards/40640057.jpg"
+},
+{
+"id": "prod_010",
+"card_name": "Kuriboh",
+"set_code": "LON-006",
+"set_name": "Labyrinth of Nightmare",
+"rarity": "Rare",
+"price": 1.99,
+"stock": 30,
+"image": "https://images.ygoprodeck.com/images/cards/40640057.jpg"
+}
+]
+}
