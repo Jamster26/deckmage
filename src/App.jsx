@@ -1,27 +1,32 @@
-import DeckListInput from './DeckListInput'
+// src/App.jsx
+import { useSearchParams } from 'react-router-dom';
+import DeckListInput from './DeckListInput';
+import './App.css';
 
 function App() {
+  const [searchParams] = useSearchParams();
+  const isEmbed = searchParams.get('embed') === 'true';
+
   return (
-    <div>
-      <h1 style={{ textAlign: 'center', padding: '20px', color: '#1a1a2e' }}>
-        YuGiOh Deck Builder
-      </h1>
-      <p style={{ 
-        textAlign: 'center', 
-        color: '#666', 
-        fontSize: '0.9rem',
-        maxWidth: '800px',
-        margin: '0 auto 30px auto'
-      }}>
-        Yu-Gi-Oh! © Konami. Card data provided by{' '}
-        <a href="https://ygoprodeck.com" target="_blank" rel="noopener noreferrer" style={{ color: '#2a9d8f' }}>
-          YGOPRODeck API
-        </a>
-        . This tool is unofficial and not affiliated with or endorsed by Konami.
-      </p>
-      <DeckListInput />
-    </div>
-  )
+    <>
+      {!isEmbed && (
+        <div className="header">
+          <h1>Yu-Gi-Oh! Deck Builder</h1>
+          <p className="disclaimer">
+            Yu-Gi-Oh! © Konami • Card data by{' '}
+            <a href="https://ygoprodeck.com" target="_blank" rel="noreferrer">
+              YGOPRODeck
+            </a>{' '}
+            • Unofficial tool
+          </p>
+        </div>
+      )}
+
+      <div className={isEmbed ? 'embed-mode' : ''}>
+        <DeckListInput />
+      </div>
+    </>
+  );
 }
 
-export default App
+export default App;

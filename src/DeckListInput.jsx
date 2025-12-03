@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './DeckBuilder.css'
 
 function DeckListInput() {
@@ -6,6 +6,34 @@ function DeckListInput() {
   const [searchResults, setSearchResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [selectedVersions, setSelectedVersions] = useState({})
+
+   // ADD THIS ENTIRE BLOCK — AUTO-RESIZES THE IFRAME WHEN EMBEDDED
+  useEffect(() => {
+    // Only run in embed mode (prevents errors on standalone page)
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('embed') !== 'true') return
+
+    const sendHeight = () => {
+      const height = document.documentElement.scrollHeight + 100 // +100 for safety
+      window.parent.postMessage(
+        { type: 'deckmage-resize', height },
+        '*' // In production change '*' → 'https://yoursite.com' for security
+      )
+    }
+
+    // Send height immediately and on any change
+    sendHeight()
+
+    // Re-send when results change or window resizes
+    const observer = new MutationObserver(sendHeight)
+    observer.observe(document.body, { childList: true, subtree: true })
+    window.addEventListener('resize', sendHeight)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', sendHeight)
+    }
+  }, [searchResults, selectedVersions]) // Re-run when results or selections change
 
  const handleParse = async () => {
   const lines = deckList.split('\n').filter(line => line.trim() !== '')

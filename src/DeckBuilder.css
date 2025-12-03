@@ -271,3 +271,14 @@
 .example-button:active {
   transform: scale(0.98);
 }
+/* src/App.css – add to bottom */
+.embed-mode {
+  padding: 0 !important;
+  margin: 0;
+  background: transparent;
+}
+
+/* Remove any default body margin when embedded */
+.embed-mode body {
+  margin: 0;
+}
