@@ -39,14 +39,14 @@ function App() {
   }, [])
 
   // Theme configurations
-  const themes = {
+ const themes = {
     light: {
       background: config.backgroundColor,
       text: config.textColor,
       cardBg: '#ffffff',
-      border: '#e0e0e0',
-      inputBg: '#ffffff',
-      inputText: '#1a1a2e'
+      border: '#dee2e6',
+      inputBg: '#f8f9fa',
+      inputText: '#212529'
     },
     dark: {
       background: config.backgroundColor,
@@ -124,8 +124,8 @@ function App() {
         </>
       )}
       
-      <DeckListInput 
-        theme={currentTheme}
+   <DeckListInput 
+        theme={{ ...currentTheme, theme: config.theme }} // ✅ Pass theme name
         layout={currentLayout}
         primaryColor={config.primaryColor}
         size={config.size}

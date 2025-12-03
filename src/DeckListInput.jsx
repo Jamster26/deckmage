@@ -238,9 +238,15 @@ return (
             Search Cards
           </button>
 
-          <button 
+         <button 
             className="clear-button"
             onClick={handleClear}
+            style={{
+              background: theme.theme === 'dark' 
+                ? 'linear-gradient(135deg, #e63946 0%, #d62828 100%)'
+                : 'linear-gradient(135deg, #6c757d 0%, #495057 100%)',
+              color: 'white'
+            }}
           >
             Clear
           </button>
@@ -248,9 +254,14 @@ return (
 
         <div style={{ marginTop: '15px', color: '#666' }}>
           <span style={{ marginRight: '10px' }}>Quick test:</span>
-          <button 
+        <button 
             className="example-button"
             onClick={loadExampleDeck}
+            style={{
+              color: primaryColor,
+              borderColor: primaryColor,
+              background: theme.cardBg
+            }}
           >
             Load Example Deck
           </button>
@@ -320,8 +331,11 @@ return (
                                 <div className="version-details">
                                   Code: {set.set_code} | Rarity: {set.set_rarity}
                                 </div>
-<div className="version-price" style={{ color: primaryColor }}>
-                                    Price: ${set.set_price || 'N/A'} each
+<div className="version-price" style={{ 
+                                  color: theme.theme === 'dark' ? '#ffd700' : '#2a9d8f',
+                                  fontWeight: 'bold'
+                                }}>
+                                  Price: ${set.set_price || 'N/A'} each
                                 </div>
                               </div>
                             ))}
