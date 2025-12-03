@@ -201,7 +201,7 @@ const searchVariations = [
   }
 
 return (
-    <div className="deck-builder-container" style={{
+    <div className="deck-builder-container" data-size={size} style={{
       maxWidth: layout.maxWidth,
       margin: '0 auto',
       padding: layout.padding
@@ -300,7 +300,9 @@ return (
                     {/* Selected Version */}
                     {selectedVersion && (
 <div className="selected-version" style={{
-                        background: `linear-gradient(135deg, ${primaryColor} 0%, ${adjustBrightness(primaryColor, -20)} 100%)`
+                        background: theme.theme === 'dark' 
+                          ? `linear-gradient(135deg, ${primaryColor} 0%, ${adjustBrightness(primaryColor, -20)} 100%)`
+                          : 'linear-gradient(135deg, #2a9d8f 0%, #1d7a70 100%)'
                       }}>
                                                 <div><strong>✓ SELECTED:</strong> {selectedVersion.set_name}</div>
                         <div>Rarity: {selectedVersion.set_rarity} | Price: ${selectedVersion.set_price} each</div>

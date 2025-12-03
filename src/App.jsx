@@ -74,9 +74,9 @@ function App() {
       maxWidth: '100%',
       padding: '40px'
     },
-    sidebar: {
-      maxWidth: '350px',
-      padding: '15px'
+  sidebar: {
+      maxWidth: '380px',
+      padding: '12px'
     }
   }
 
