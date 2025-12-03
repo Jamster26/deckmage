@@ -1,0 +1,12 @@
+# Landing page by default
+[[redirects]]
+  from = "/"
+  to = "/landing.html"
+  status = 200
+
+# Deck builder app when embed param is present
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
