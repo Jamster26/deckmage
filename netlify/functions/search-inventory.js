@@ -41,7 +41,6 @@ function extractRarity(title) {
   return null
 }
 
-// Add this helper function at the top
 async function fetchCardDataFromYGOPro(cardName) {
   if (!cardName) return null
   
@@ -49,6 +48,11 @@ async function fetchCardDataFromYGOPro(cardName) {
     let response = await fetch(
       `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(cardName)}`
     )
+    
+    if (!response.ok) {
+      throw new Error(`YGOPro API returned ${response.status}`)
+    }
+    
     let data = await response.json()
     
     // If exact match fails, try fuzzy search
@@ -56,6 +60,11 @@ async function fetchCardDataFromYGOPro(cardName) {
       response = await fetch(
         `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(cardName)}`
       )
+      
+      if (!response.ok) {
+        throw new Error(`YGOPro API returned ${response.status}`)
+      }
+      
       data = await response.json()
     }
     
@@ -70,12 +79,12 @@ async function fetchCardDataFromYGOPro(cardName) {
         def: card.def,
         level: card.level,
         attribute: card.attribute,
-        // Get set name from set code
         sets: card.card_sets || []
       }
     }
   } catch (error) {
     console.warn(`Could not fetch YGOPro data for ${cardName}:`, error.message)
+    return null  // Return null instead of throwing
   }
   
   return null
@@ -191,22 +200,32 @@ exports.handler = async (event) => {
     }
 
     console.log(`Found ${products.length} matching products`)
-
-// NEW: Fetch YGOPro data once per unique card (before the loop)
+// Before the forEach loop, fetch YGOPro data once per unique card
 const ygoproDataCache = {}
 
-for (const cardName of cardNames) {
-  const normalizedSearch = normalizeCardName(cardName)
-  const matchingProducts = products.filter(p => 
-    p.normalized_card_name === normalizedSearch
-  )
-  
-  if (matchingProducts.length > 0) {
-    // Fetch YGOPro data once for this card
-    const matchedCardName = matchingProducts[0].matched_card_name
-    console.log(`Fetching YGOPro data for: ${matchedCardName}`)
-    ygoproDataCache[cardName] = await fetchCardDataFromYGOPro(matchedCardName)
+try {
+  for (const cardName of cardNames) {
+    const normalizedSearch = normalizeCardName(cardName)
+    const matchingProducts = products.filter(p => 
+      p.normalized_card_name === normalizedSearch
+    )
+    
+    if (matchingProducts.length > 0) {
+      // Fetch YGOPro data once for this card
+      const matchedCardName = matchingProducts[0].matched_card_name
+      console.log(`Fetching YGOPro data for: ${matchedCardName}`)
+      
+      try {
+        ygoproDataCache[cardName] = await fetchCardDataFromYGOPro(matchedCardName)
+      } catch (error) {
+        console.error(`Failed to fetch YGOPro data for ${matchedCardName}:`, error)
+        ygoproDataCache[cardName] = null  // Set to null on error
+      }
+    }
   }
+} catch (error) {
+  console.error('Error in YGOPro fetch loop:', error)
+  // Continue without YGOPro data - search will still work
 }
 
 // Group products by original card name (for response)
@@ -278,29 +297,3 @@ return {
   }
 }
 
-// Helper functions to extract metadata from product titles
-function extractSetCode(title) {
-  const match = title.match(/\b([A-Z]{2,5}-[A-Z]?\d{3})\b/i)
-  return match ? match[1].toUpperCase() : ''
-}
-
-function extractRarity(title) {
-  const rarities = [
-    'Starlight Rare',
-    'Ghost Rare',
-    'Ultimate Rare',
-    'Ultra Rare',
-    'Super Rare',
-    'Secret Rare',
-    'Rare',
-    'Common'
-  ]
-  
-  for (const rarity of rarities) {
-    if (title.toLowerCase().includes(rarity.toLowerCase())) {
-      return rarity
-    }
-  }
-  
-  return ''
-}
