@@ -123,12 +123,15 @@ async function handleRealShopMode(parsedCards, shopId) {
           shopProducts: shopProducts,
           cardData: {
             name: card.cardName,
-            card_images: shopProducts[0].image ? [{ image_url: shopProducts[0].image }] : [],
+            // FIX: Handle missing images properly
+            card_images: shopProducts[0]?.image 
+              ? [{ image_url: shopProducts[0].image }] 
+              : [{ image_url: 'https://images.ygoprodeck.com/images/cards/back.jpg' }], // Fallback image
             card_sets: shopProducts.map(p => ({
-              set_name: `${p.setCode || 'Unknown'} - ${p.rarity || 'Unknown'} - ${p.condition}`,
-              set_code: p.setCode,
-              set_rarity: p.rarity,
-              set_price: p.price.toString(),
+              set_name: `${p.setCode || 'Unknown'} - ${p.rarity || 'Unknown'} - ${p.condition || 'Near Mint'}`,
+              set_code: p.setCode || 'N/A',
+              set_rarity: p.rarity || 'Common',
+              set_price: p.price?.toString() || '0.00',
               productId: p.productId,
               variantId: p.variantId,
               available: p.available,
