@@ -426,59 +426,145 @@ loadProducts(data.id)
               gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
               gap: '20px'
             }}>
-              {products.slice(0, 12).map(product => (
-                <div key={product.id} style={{
-                  background: '#0a0a1f',
-                  border: '1px solid #2d2d44',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px'
-                }}>
-                  {product.images && product.images[0] && (
-                    <img 
-                      src={product.images[0].src} 
-                      alt={product.title}
-                      style={{
-                        width: '100%',
-                        height: '200px',
-                        objectFit: 'cover',
-                        borderRadius: '8px'
-                      }}
-                    />
-                  )}
-                  <div>
-                    <h4 style={{ 
-                      fontSize: '1rem', 
-                      fontWeight: 'bold',
-                      marginBottom: '4px',
-                      color: '#fff'
-                    }}>
-                      {product.title}
-                    </h4>
-                    {product.vendor && (
-                      <p style={{ fontSize: '0.85rem', color: '#888' }}>
-                        by {product.vendor}
-                      </p>
-                    )}
-                    {product.product_type && (
-                      <p style={{ fontSize: '0.85rem', color: '#888' }}>
-                        {product.product_type}
-                      </p>
-                    )}
-                  </div>
-                  <div style={{ 
-                    borderTop: '1px solid #2d2d44',
-                    paddingTop: '12px',
-                    marginTop: 'auto'
-                  }}>
-                    <p style={{ fontSize: '0.85rem', color: '#888' }}>
-                      {product.variants?.length || 0} variant(s)
-                    </p>
-                  </div>
-                </div>
-              ))}
+             {products.slice(0, 12).map(product => {
+  // Calculate price range from variants
+  const prices = product.variants?.map(v => parseFloat(v.price)) || []
+  const minPrice = prices.length > 0 ? Math.min(...prices) : null
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : null
+  
+  const priceDisplay = minPrice && maxPrice
+    ? minPrice === maxPrice
+      ? `$${minPrice.toFixed(2)}`
+      : `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
+    : 'No price set'
+
+  // Check stock status
+  const totalInventory = product.variants?.reduce((sum, v) => 
+    sum + (v.inventory_quantity || 0), 0
+  ) || 0
+  
+  const stockStatus = totalInventory > 10 ? 'in-stock' 
+    : totalInventory > 0 ? 'low-stock' 
+    : 'out-of-stock'
+  
+  const stockColor = stockStatus === 'in-stock' ? '#00ff9d' 
+    : stockStatus === 'low-stock' ? '#ffd700' 
+    : '#e63946'
+
+  return (
+    <div key={product.id} style={{
+      background: '#0a0a1f',
+      border: '1px solid #2d2d44',
+      borderRadius: '12px',
+      padding: '16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '12px',
+      position: 'relative'
+    }}>
+      {/* Stock Status Dot */}
+      <div style={{
+        position: 'absolute',
+        top: '12px',
+        right: '12px',
+        width: '12px',
+        height: '12px',
+        borderRadius: '50%',
+        background: stockColor,
+        boxShadow: `0 0 8px ${stockColor}`
+      }} title={stockStatus.replace('-', ' ')} />
+
+      {/* Product Image */}
+      {product.images && product.images[0] ? (
+        <img 
+          src={product.images[0].src} 
+          alt={product.title}
+          style={{
+            width: '100%',
+            height: '200px',
+            objectFit: 'cover',
+            borderRadius: '8px'
+          }}
+        />
+      ) : (
+        <div style={{
+          width: '100%',
+          height: '200px',
+          background: '#1a1a2e',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#555',
+          fontSize: '3rem'
+        }}>
+          🃏
+        </div>
+      )}
+
+      {/* Product Info */}
+      <div>
+        <h4 style={{ 
+          fontSize: '1rem', 
+          fontWeight: 'bold',
+          marginBottom: '4px',
+          color: '#fff',
+          lineHeight: '1.3'
+        }}>
+          {product.title}
+        </h4>
+        {product.vendor && (
+          <p style={{ fontSize: '0.85rem', color: '#888', marginBottom: '2px' }}>
+            by {product.vendor}
+          </p>
+        )}
+        {product.product_type && (
+          <p style={{ fontSize: '0.85rem', color: '#888' }}>
+            {product.product_type}
+          </p>
+        )}
+      </div>
+
+      {/* Price */}
+      <div style={{
+        fontSize: '1.1rem',
+        fontWeight: 'bold',
+        color: '#00ff9d'
+      }}>
+        {priceDisplay}
+      </div>
+
+      {/* Match Status Badge */}
+      <div style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '6px 12px',
+        borderRadius: '6px',
+        fontSize: '0.85rem',
+        background: product.matched_card_id ? '#00ff9d22' : '#88888822',
+        border: `1px solid ${product.matched_card_id ? '#00ff9d' : '#555'}`,
+        color: product.matched_card_id ? '#00ff9d' : '#888',
+        width: 'fit-content'
+      }}>
+        <span>{product.matched_card_id ? '✅' : '⚠️'}</span>
+        <span>{product.matched_card_id ? 'Matched' : 'Needs Matching'}</span>
+      </div>
+
+      {/* Variants Info */}
+      <div style={{ 
+        borderTop: '1px solid #2d2d44',
+        paddingTop: '12px',
+        marginTop: 'auto',
+        fontSize: '0.85rem',
+        color: '#888'
+      }}>
+        {product.variants?.length || 0} variant(s) • {totalInventory} in stock
+      </div>
+    </div>
+  )
+})}
+               
             </div>
 
             {products.length > 12 && (
