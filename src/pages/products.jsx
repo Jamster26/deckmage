@@ -29,20 +29,35 @@ function Products() {
   }
 
   async function fetchProducts(userId) {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('store_id', userId)
-      .order('title', { ascending: true })
+  setLoading(true)
+  
+  // First get the connected store
+  const { data: store } = await supabase
+    .from('connected_stores')
+    .select('id')
+    .eq('user_id', userId)
+    .single()
 
-    if (error) {
-      console.error('Error fetching products:', error)
-    } else {
-      setProducts(data || [])
-    }
+  if (!store) {
+    setProducts([])
     setLoading(false)
+    return
   }
+
+  // Then get products using store_id
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('store_id', store.id)  // ← Use store.id, not userId
+    .order('title', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching products:', error)
+  } else {
+    setProducts(data || [])
+  }
+  setLoading(false)
+}
 
   function openMatchModal(product) {
     setSelectedProduct(product)

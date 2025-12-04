@@ -542,13 +542,13 @@ loadProducts(data.id)
         padding: '6px 12px',
         borderRadius: '6px',
         fontSize: '0.85rem',
-        background: product.matched_card_id ? '#00ff9d22' : '#88888822',
+background: product.matched_card_name ? '#00ff9d22' : '#88888822',
         border: `1px solid ${product.matched_card_id ? '#00ff9d' : '#555'}`,
         color: product.matched_card_id ? '#00ff9d' : '#888',
         width: 'fit-content'
       }}>
-        <span>{product.matched_card_id ? '✅' : '⚠️'}</span>
-        <span>{product.matched_card_id ? 'Matched' : 'Needs Matching'}</span>
+      <span>{product.matched_card_name ? '✅' : '⚠️'}</span>
+<span>{product.matched_card_name ? 'Matched' : 'Needs Matching'}</span>
       </div>
 
       {/* Variants Info */}
