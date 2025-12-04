@@ -102,14 +102,22 @@ exports.handler = async (event) => {
   }
 }
 
-// Helper function to extract card name from product title
 function extractCardName(title) {
-  // Simple version: just use the title as-is
-  // You might want to add logic to clean it up
-  // For example, remove set codes, conditions, etc.
+  // Remove common suffixes like set codes, conditions, editions
+  let cleaned = title
+    
+  // Remove set codes (e.g., "LOB-005", "SDK-001")
+  cleaned = cleaned.replace(/\s*-?\s*[A-Z]{2,5}-[A-Z]?\d{3,4}\s*/gi, '')
   
-  // Example: "Dark Magician - LOB-005 - Ultra Rare" → "Dark Magician"
-  const cardName = title.split('-')[0].trim()
+  // Remove conditions
+  cleaned = cleaned.replace(/\s*-?\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|NM|LP|MP|HP|DMG)\s*/gi, '')
   
-  return cardName
+  // Remove editions
+  cleaned = cleaned.replace(/\s*-?\s*(1st Edition|Limited Edition|Unlimited)\s*/gi, '')
+  
+  // Remove rarity
+  cleaned = cleaned.replace(/\s*-?\s*(Ultra Rare|Super Rare|Secret Rare|Rare|Common|Starlight|Ghost)\s*/gi, '')
+  
+  // Trim and return
+  return cleaned.trim()
 }
