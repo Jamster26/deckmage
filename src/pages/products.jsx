@@ -624,21 +624,25 @@ async function fetchProducts(userId) {
 
       </div>
 
-      {/* Real MatchModal imported from components folder */}
-      {matchModalOpen && selectedProduct && (
-        <MatchModal
-          product={selectedProduct}
-          onClose={() => {
-            setMatchModalOpen(false)
-            setSelectedProduct(null)
-          }}
-          onSave={() => {
-            fetchProducts(user.id)
-            setMatchModalOpen(false)
-            setSelectedProduct(null)
-          }}
-        />
-      )}
+    {matchModalOpen && selectedProduct && (
+  <MatchModal
+    product={selectedProduct}
+    onClose={() => {
+      setMatchModalOpen(false)
+      setSelectedProduct(null)
+    }}
+    onSave={async () => {  // ← Replace this callback
+      console.log('onSave callback triggered!')
+      setMatchModalOpen(false)
+      setSelectedProduct(null)
+      
+      // Force a clean refresh
+      setLoading(true)
+      await fetchProducts(user.id)
+      console.log('Products refreshed')
+    }}
+  />
+)}
     </div>
   )
 }
