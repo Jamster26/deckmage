@@ -101,22 +101,45 @@ export function extractCardName(productTitle) {
   
   let cleaned = productTitle
     // Remove set codes (e.g., "LOB-001", "SDK-001") - but keep card name hyphens
-    .replace(/\b[A-Z]{2,5}-[A-Z]?\d{3}\b/gi, '')
-    // Remove editions
-    .replace(/\b(1st Edition|Unlimited|Limited)\b/gi, '')
-    // Remove rarities
-    .replace(/\b(Ultra Rare|Super Rare|Secret Rare|Common|Rare|Starlight|Ghost)\b/gi, '')
+    .replace(/\b[A-Z]{2,5}-[A-Z]?\d{3,4}\b/gi, '')
     // Remove conditions
-    .replace(/\b(Near Mint|NM|Lightly Played|LP|Moderately Played|MP|Heavily Played|HP|Damaged)\b/gi, '')
+    .replace(/\s*-?\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|Mint|NM|LP|MP|HP|DMG)\s*/gi, '')
+    // Remove editions
+    .replace(/\s*-?\s*(1st Edition|Limited Edition|Unlimited|1st)\s*/gi, '')
+    // Remove rarities
+    .replace(/\s*-?\s*(Starlight Rare|Ghost Rare|Ultimate Rare|Ultra Rare|Super Rare|Secret Rare|Prismatic Secret|Quarter Century|Collector's Rare|Rare|Common)\s*/gi, '')
     .trim()
   
-  // Clean up extra spaces and dashes, but preserve hyphens in card names
-  cleaned = cleaned
-    .replace(/\s{2,}/g, ' ')  // Multiple spaces → single space
-    .replace(/\s*-\s*-\s*/g, ' ')  // Multiple dashes → remove
-    .replace(/^\s*-\s*/, '')  // Leading dash
-    .replace(/\s*-\s*$/, '')  // Trailing dash
-    .trim()
+  // Clean up extra spaces
+  cleaned = cleaned.replace(/\s+/g, ' ').trim()
+  
+  // Fix common variants (Blue Eyes → Blue-Eyes)
+  cleaned = fixCommonCardNameVariants(cleaned)
   
   return cleaned
+}
+
+// Add this helper function BEFORE extractCardName
+function fixCommonCardNameVariants(name) {
+  const fixes = {
+    'blue eyes white dragon': 'Blue-Eyes White Dragon',
+    'blue eyes black dragon': 'Blue-Eyes Black Dragon', 
+    'red eyes black dragon': 'Red-Eyes Black Dragon',
+    'red eyes b dragon': 'Red-Eyes B. Dragon',
+    'red eyes b. dragon': 'Red-Eyes B. Dragon',
+    'dark magician girl': 'Dark Magician Girl',
+    'blue eyes ultimate dragon': 'Blue-Eyes Ultimate Dragon',
+    'red eyes darkness metal dragon': 'Red-Eyes Darkness Metal Dragon',
+    'cyber end dragon': 'Cyber End Dragon',
+    'cyber twin dragon': 'Cyber Twin Dragon'
+  };
+  
+  const normalized = name.toLowerCase().trim();
+  
+  if (fixes[normalized]) {
+    console.log(`✏️  Auto-corrected: "${name}" → "${fixes[normalized]}"`);
+    return fixes[normalized];
+  }
+  
+  return name;
 }
