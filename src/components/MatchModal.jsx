@@ -8,12 +8,6 @@ function MatchModal({ product, onClose, onSave }) {
   const [selectedCard, setSelectedCard] = useState(null)
   const [searching, setSearching] = useState(false)
   const [saving, setSaving] = useState(false)
-  
-  // Additional fields
-  const [setCode, setSetCode] = useState(product.set_code || '')
-  const [rarity, setRarity] = useState(product.rarity || '')
-  const [condition, setCondition] = useState(product.condition || 'Near Mint')
-  const [edition, setEdition] = useState(product.edition || '')
 
   // Auto-suggest on mount
   useEffect(() => {
@@ -34,30 +28,57 @@ function MatchModal({ product, onClose, onSave }) {
   }
 
   async function handleSave() {
-    if (!selectedCard) return
+  if (!selectedCard) return
+  
+  setSaving(true)
+  
+  try {
+    // 1. Save/update card in cache
+    const { error: cardError } = await supabase
+      .from('cards')
+      .upsert({
+        id: selectedCard.id,
+        name: selectedCard.name,
+        type: selectedCard.type,
+        race: selectedCard.race,
+        atk: selectedCard.atk,
+        def: selectedCard.def,
+        level: selectedCard.level,
+        attribute: selectedCard.attribute,
+        description: selectedCard.desc,
+        image_url: selectedCard.card_images?.[0]?.image_url,
+        image_url_small: selectedCard.card_images?.[0]?.image_url_small,
+        card_data: selectedCard,
+        last_updated: new Date().toISOString()
+      }, {
+        onConflict: 'id'
+      })
     
-    setSaving(true)
+    if (cardError) {
+      console.error('Error caching card:', cardError)
+    }
     
-    const { error } = await supabase
+    // 2. Link product to card
+    const { error: productError } = await supabase
       .from('products')
       .update({
         matched_card_name: selectedCard.name,
-        set_code: setCode,
-        rarity: rarity,
-        condition: condition,
-        edition: edition
+        card_id: selectedCard.id.toString()
       })
       .eq('id', product.id)
     
-    if (error) {
-      console.error('Error saving match:', error)
-      alert('Failed to save match')
-    } else {
-      onSave()
+    if (productError) {
+      throw productError
     }
     
-    setSaving(false)
+    onSave()
+  } catch (error) {
+    console.error('Error saving match:', error)
+    alert('Failed to save match')
   }
+  
+  setSaving(false)
+}
 
   async function handleUnmatch() {
     setSaving(true)
@@ -66,9 +87,7 @@ function MatchModal({ product, onClose, onSave }) {
       .from('products')
       .update({
         matched_card_name: null,
-        set_code: null,
-        rarity: null,
-        edition: null
+        card_id: null
       })
       .eq('id', product.id)
     
@@ -120,7 +139,7 @@ function MatchModal({ product, onClose, onSave }) {
               Match Product to Card
             </h2>
             <p style={{ color: '#888', fontSize: '0.95rem' }}>
-              Link this product to a Yu-Gi-Oh! card from the database
+              Link this product to a Yu-Gi-Oh! card for better search visibility
             </p>
           </div>
           <button
@@ -189,7 +208,7 @@ function MatchModal({ product, onClose, onSave }) {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="e.g., Blue-Eyes White Dragon"
+              placeholder="Enter card name..."
               style={{
                 flex: 1,
                 padding: '12px',
@@ -202,111 +221,92 @@ function MatchModal({ product, onClose, onSave }) {
             />
             <button
               onClick={() => handleSearch()}
-              disabled={searching || !searchQuery.trim()}
+              disabled={searching}
               style={{
                 padding: '12px 24px',
-                background: '#00ff9d',
+                background: searching ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
                 border: 'none',
                 borderRadius: '8px',
                 color: '#0a0a1f',
                 cursor: searching ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
-                opacity: searching || !searchQuery.trim() ? 0.5 : 1
+                fontSize: '1rem',
+                whiteSpace: 'nowrap'
               }}
             >
               {searching ? 'Searching...' : 'Search'}
             </button>
           </div>
-          
-          {searchQuery && (
-            <div style={{ color: '#888', fontSize: '0.85rem', marginTop: '8px' }}>
-              💡 Auto-detected from product title: "{extractCardName(product.title)}"
-            </div>
-          )}
         </div>
 
         {/* Search Results */}
         {searchResults.length > 0 && (
           <div style={{ marginBottom: '30px' }}>
-            <div style={{ color: '#888', marginBottom: '12px', fontSize: '0.9rem' }}>
-              Found {searchResults.length} card{searchResults.length !== 1 ? 's' : ''}
-            </div>
+            <label style={{ display: 'block', color: '#888', marginBottom: '12px', fontSize: '0.9rem' }}>
+              Select Matching Card ({searchResults.length} results)
+            </label>
             <div style={{
-              display: 'grid',
-              gap: '12px',
               maxHeight: '400px',
               overflowY: 'auto',
-              padding: '2px'
+              border: '1px solid #2d2d44',
+              borderRadius: '8px'
             }}>
-              {searchResults.map(card => (
+              {searchResults.map((card) => (
                 <div
                   key={card.id}
                   onClick={() => setSelectedCard(card)}
                   style={{
-                    background: selectedCard?.id === card.id ? '#00ff9d22' : '#0a0a1f',
-                    border: selectedCard?.id === card.id ? '2px solid #00ff9d' : '1px solid #2d2d44',
-                    borderRadius: '12px',
                     padding: '16px',
+                    borderBottom: '1px solid #2d2d44',
                     cursor: 'pointer',
+                    background: selectedCard?.id === card.id ? '#00ff9d22' : 'transparent',
                     display: 'flex',
                     gap: '16px',
+                    alignItems: 'center',
                     transition: 'all 0.2s'
                   }}
                   onMouseEnter={(e) => {
                     if (selectedCard?.id !== card.id) {
-                      e.currentTarget.style.background = '#16162e'
+                      e.currentTarget.style.background = '#0a0a1f'
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (selectedCard?.id !== card.id) {
-                      e.currentTarget.style.background = '#0a0a1f'
+                      e.currentTarget.style.background = 'transparent'
                     }
                   }}
                 >
-                  <img
-                    src={card.card_images[0].image_url_small}
-                    alt={card.name}
-                    style={{
-                      width: '80px',
-                      height: '116px',
-                      objectFit: 'cover',
-                      borderRadius: '6px'
-                    }}
-                  />
+                  {card.card_images?.[0] && (
+                    <img
+                      src={card.card_images[0].image_url_small}
+                      alt={card.name}
+                      style={{
+                        width: '60px',
+                        height: '87px',
+                        objectFit: 'cover',
+                        borderRadius: '4px',
+                        border: '1px solid #2d2d44'
+                      }}
+                    />
+                  )}
                   <div style={{ flex: 1 }}>
-                    <div style={{
-                      color: '#fff',
-                      fontSize: '1.1rem',
-                      fontWeight: '600',
-                      marginBottom: '8px'
-                    }}>
+                    <div style={{ color: '#fff', fontSize: '1rem', fontWeight: '600', marginBottom: '4px' }}>
                       {card.name}
                     </div>
-                    <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '4px' }}>
-                      {card.type}
-                      {card.race && ` | ${card.race}`}
-                      {card.attribute && ` | ${card.attribute}`}
+                    <div style={{ color: '#888', fontSize: '0.85rem' }}>
+                      {card.type} • {card.race}
                     </div>
                     {card.atk !== undefined && (
-                      <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '8px' }}>
-                        {card.level && `Level ${card.level} | `}
+                      <div style={{ color: '#00ff9d', fontSize: '0.85rem', marginTop: '4px' }}>
                         ATK {card.atk} / DEF {card.def}
                       </div>
                     )}
-                    <div style={{
-                      color: '#666',
-                      fontSize: '0.85rem',
-                      maxHeight: '60px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }}>
-                      {card.desc}
-                    </div>
                   </div>
                   {selectedCard?.id === card.id && (
                     <div style={{
                       color: '#00ff9d',
-                      fontSize: '1.5rem'
+                      fontSize: '1.5rem',
+                      fontWeight: 'bold'
                     }}>
                       ✓
                     </div>
@@ -319,135 +319,23 @@ function MatchModal({ product, onClose, onSave }) {
 
         {searchResults.length === 0 && searchQuery && !searching && (
           <div style={{
-            textAlign: 'center',
             padding: '40px',
+            textAlign: 'center',
             color: '#888',
-            background: '#0a0a1f',
-            borderRadius: '12px',
-            marginBottom: '30px'
+            fontSize: '0.95rem'
           }}>
-            <div style={{ fontSize: '2rem', marginBottom: '10px' }}>🔍</div>
-            <div>No cards found for "{searchQuery}"</div>
-            <div style={{ fontSize: '0.85rem', marginTop: '8px' }}>
-              Try a different search term
-            </div>
+            No cards found. Try a different search term.
           </div>
         )}
 
-        {/* Additional Details (when card selected) */}
-        {selectedCard && (
-          <div style={{
-            background: '#0a0a1f',
-            border: '1px solid #2d2d44',
-            borderRadius: '12px',
-            padding: '20px',
-            marginBottom: '20px'
-          }}>
-            <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600', marginBottom: '16px' }}>
-              Additional Details
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', color: '#888', marginBottom: '6px', fontSize: '0.85rem' }}>
-                  Set Code (e.g., LOB-001)
-                </label>
-                <input
-                  type="text"
-                  value={setCode}
-                  onChange={(e) => setSetCode(e.target.value)}
-                  placeholder="Optional"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    background: '#16162e',
-                    border: '1px solid #2d2d44',
-                    borderRadius: '6px',
-                    color: '#fff',
-                    fontSize: '0.95rem'
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', color: '#888', marginBottom: '6px', fontSize: '0.85rem' }}>
-                  Rarity
-                </label>
-                <select
-                  value={rarity}
-                  onChange={(e) => setRarity(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    background: '#16162e',
-                    border: '1px solid #2d2d44',
-                    borderRadius: '6px',
-                    color: '#fff',
-                    fontSize: '0.95rem'
-                  }}
-                >
-                  <option value="">Select rarity</option>
-                  <option value="Common">Common</option>
-                  <option value="Rare">Rare</option>
-                  <option value="Super Rare">Super Rare</option>
-                  <option value="Ultra Rare">Ultra Rare</option>
-                  <option value="Secret Rare">Secret Rare</option>
-                  <option value="Ultimate Rare">Ultimate Rare</option>
-                  <option value="Ghost Rare">Ghost Rare</option>
-                  <option value="Starlight Rare">Starlight Rare</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', color: '#888', marginBottom: '6px', fontSize: '0.85rem' }}>
-                  Condition
-                </label>
-                <select
-                  value={condition}
-                  onChange={(e) => setCondition(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    background: '#16162e',
-                    border: '1px solid #2d2d44',
-                    borderRadius: '6px',
-                    color: '#fff',
-                    fontSize: '0.95rem'
-                  }}
-                >
-                  <option value="Near Mint">Near Mint</option>
-                  <option value="Lightly Played">Lightly Played</option>
-                  <option value="Moderately Played">Moderately Played</option>
-                  <option value="Heavily Played">Heavily Played</option>
-                  <option value="Damaged">Damaged</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', color: '#888', marginBottom: '6px', fontSize: '0.85rem' }}>
-                  Edition
-                </label>
-                <select
-                  value={edition}
-                  onChange={(e) => setEdition(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    background: '#16162e',
-                    border: '1px solid #2d2d44',
-                    borderRadius: '6px',
-                    color: '#fff',
-                    fontSize: '0.95rem'
-                  }}
-                >
-                  <option value="">Select edition</option>
-                  <option value="1st Edition">1st Edition</option>
-                  <option value="Unlimited">Unlimited</option>
-                  <option value="Limited">Limited</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+        {/* Action Buttons */}
+        <div style={{
+          display: 'flex',
+          gap: '12px',
+          justifyContent: 'flex-end',
+          paddingTop: '20px',
+          borderTop: '1px solid #2d2d44'
+        }}>
           {product.matched_card_name && (
             <button
               onClick={handleUnmatch}
@@ -460,12 +348,13 @@ function MatchModal({ product, onClose, onSave }) {
                 color: '#ff4444',
                 cursor: saving ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
-                opacity: saving ? 0.5 : 1
+                fontSize: '1rem'
               }}
             >
-              Unmatch
+              {saving ? 'Unmatching...' : 'Unmatch'}
             </button>
           )}
+          
           <button
             onClick={onClose}
             style={{
@@ -475,28 +364,31 @@ function MatchModal({ product, onClose, onSave }) {
               borderRadius: '8px',
               color: '#888',
               cursor: 'pointer',
-              fontWeight: '600'
+              fontWeight: '600',
+              fontSize: '1rem'
             }}
           >
             Cancel
           </button>
+          
           <button
             onClick={handleSave}
             disabled={!selectedCard || saving}
             style={{
               padding: '12px 24px',
-              background: selectedCard && !saving ? '#00ff9d' : '#2d2d44',
+              background: (!selectedCard || saving) ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
               border: 'none',
               borderRadius: '8px',
-              color: selectedCard && !saving ? '#0a0a1f' : '#666',
-              cursor: selectedCard && !saving ? 'pointer' : 'not-allowed',
-              fontWeight: '600'
+              color: '#0a0a1f',
+              cursor: (!selectedCard || saving) ? 'not-allowed' : 'pointer',
+              fontWeight: '600',
+              fontSize: '1rem',
+              opacity: (!selectedCard || saving) ? 0.6 : 1
             }}
           >
             {saving ? 'Saving...' : 'Save Match'}
           </button>
         </div>
-
       </div>
     </div>
   )

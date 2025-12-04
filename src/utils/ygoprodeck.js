@@ -1,23 +1,56 @@
 const YGOPRODECK_API = 'https://db.ygoprodeck.com/api/v7/cardinfo.php'
 
+// Simple rate limiter
+let lastRequestTime = 0
+const MIN_REQUEST_INTERVAL = 100 // 100ms = max 10 requests/second
+
 /**
  * Search for cards by name (fuzzy search)
  */
 export async function searchYGOCards(query) {
+  // Rate limit protection
+  const now = Date.now()
+  const timeSinceLastRequest = now - lastRequestTime
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+    await new Promise(resolve => 
+      setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest)
+    )
+  }
+  lastRequestTime = Date.now()
+  
   try {
-    const response = await fetch(`${YGOPRODECK_API}?fname=${encodeURIComponent(query)}`)
+    // Add better error logging
+    console.log('Searching YGOProDeck for:', query)
+    
+    const url = `${YGOPRODECK_API}?fname=${encodeURIComponent(query)}`
+    console.log('API URL:', url)
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      }
+    })
+    
+    console.log('Response status:', response.status)
     
     if (!response.ok) {
       if (response.status === 404) {
+        console.log('No cards found for query:', query)
         return []
       }
-      throw new Error('Failed to search cards')
+      // Log the actual error response
+      const errorText = await response.text()
+      console.error('API error response:', errorText)
+      throw new Error(`Failed to search cards: ${response.status} ${response.statusText}`)
     }
     
     const data = await response.json()
+    console.log('Found cards:', data.data?.length || 0)
     return data.data || []
   } catch (error) {
     console.error('Error searching YGOProDeck:', error)
+    // Return empty array instead of throwing to prevent UI breaking
     return []
   }
 }
@@ -26,10 +59,29 @@ export async function searchYGOCards(query) {
  * Get exact card by name
  */
 export async function getYGOCard(name) {
+  // Rate limit protection (same as above)
+  const now = Date.now()
+  const timeSinceLastRequest = now - lastRequestTime
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+    await new Promise(resolve => 
+      setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest)
+    )
+  }
+  lastRequestTime = Date.now()
+  
   try {
-    const response = await fetch(`${YGOPRODECK_API}?name=${encodeURIComponent(name)}`)
+    console.log('Fetching exact card:', name)
+    
+    const url = `${YGOPRODECK_API}?name=${encodeURIComponent(name)}`
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      }
+    })
     
     if (!response.ok) {
+      console.log('Card not found:', name)
       return null
     }
     
@@ -43,9 +95,6 @@ export async function getYGOCard(name) {
 
 /**
  * Extract likely card name from product title
- * Examples:
- *   "Blue-Eyes White Dragon - LOB-001 Ultra Rare" → "Blue-Eyes White Dragon"
- *   "Dark Magician SDY-006 NM" → "Dark Magician"
  */
 export function extractCardName(productTitle) {
   if (!productTitle) return ''
