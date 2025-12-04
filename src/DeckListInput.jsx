@@ -71,18 +71,30 @@ const handleParse = async () => {
   
   setLoading(true)
   
-  // Get shop ID from URL
-  const urlParams = new URLSearchParams(window.location.search)
-  const shopId = urlParams.get('shop')
-  const isDemo = urlParams.get('demo') === 'true'
-  
-  if (isDemo || !shopId) {
-    // Demo mode - use YGOProDeck (your existing code)
-    await handleDemoMode(parsedCards)
-  } else {
-    // Real shop mode - use your API
-    await handleRealShopMode(parsedCards, shopId)
-  }
+// Get shop from URL path
+const urlPath = window.location.pathname
+const urlParams = new URLSearchParams(window.location.search)
+
+let shopId = null
+let isDemo = false
+
+// Check if URL is /demo-shop/deck-builder
+if (urlPath.includes('/demo-shop/')) {
+  shopId = 'deckmage-test.myshopify.com'
+  isDemo = false // It's the real test shop
+} else {
+  // Fallback to query params for embed mode
+  shopId = urlParams.get('shop')
+  isDemo = urlParams.get('demo') === 'true'
+}
+
+if (isDemo || !shopId) {
+  // Demo mode - use YGOProDeck
+  await handleDemoMode(parsedCards)
+} else {
+  // Real shop mode - use your API
+  await handleRealShopMode(parsedCards, shopId)
+}
   
   setLoading(false)
 }
@@ -557,8 +569,16 @@ return (
 <button
   className="add-all-button"
   onClick={() => {
+// Get shop ID the same way as search
+const urlPath = window.location.pathname
+let shopId = null
+
+if (urlPath.includes('/demo-shop/')) {
+  shopId = 'deckmage-test.myshopify.com'
+} else {
   const urlParams = new URLSearchParams(window.location.search)
-  const shopId = urlParams.get('shop')
+  shopId = urlParams.get('shop')
+}
 
   // Build cart data in the format the demo shop expects
   const cartItems = searchResults.map((result, index) => {
