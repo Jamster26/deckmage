@@ -104,6 +104,8 @@ exports.handler = async (event) => {
             productId: product.shopify_product_id,
             variantId: variant.id,
             title: product.title,
+                matchedCardName: product.matched_card_name,  // ← ADD THIS LINE
+
             price: parseFloat(variant.price) || 0,
             compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
             sku: variant.sku || '',

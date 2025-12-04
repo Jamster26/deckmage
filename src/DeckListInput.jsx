@@ -116,9 +116,9 @@ async function handleRealShopMode(parsedCards, shopId) {
     for (const card of parsedCards) {
       const shopProducts = data.results[card.cardName]
       
-      if (shopProducts && shopProducts.length > 0) {
-        // Use the matched_card_name from shop inventory (which has correct formatting)
-        const correctCardName = shopProducts[0].title.split('-')[0].trim() || card.cardName
+    if (shopProducts && shopProducts.length > 0) {
+  // Use the matched_card_name from database (already cleaned properly)
+  const correctCardName = shopProducts[0].matchedCardName || card.cardName
         
         // PRIORITY 1: Use shop's product image if available
         let cardImage = shopProducts[0].image
