@@ -5,6 +5,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+// Add this helper function at the top of search-inventory.js
+function normalizeCardName(name) {
+  return name
+    .toLowerCase()
+    .replace(/[\s-]/g, '') // Remove spaces and hyphens
+    .replace(/[^a-z0-9]/g, '') // Remove special characters
+}
+
 exports.handler = async (event) => {
   // Enable CORS
   const headers = {
@@ -55,23 +63,35 @@ exports.handler = async (event) => {
       }
     }
 
-    // Search for products that match the card names
+   // In netlify/functions/search-inventory.js
+
+// Normalize the search terms
+    const normalizedCardNames = cardNames.map(normalizeCardName)
+
+    console.log('Normalized search terms:', normalizedCardNames)
+
+    // Query using normalized column for fast lookup
     const { data: products, error: productsError } = await supabase
       .from('products')
       .select('*')
       .eq('store_id', store.id)
-      .in('matched_card_name', cardNames)
+      .in('normalized_card_name', normalizedCardNames)
 
     if (productsError) {
+      console.error('Products query error:', productsError)
       throw productsError
     }
 
-    // Group products by card name
+    console.log(`Found ${products.length} matching products`)
+
+    // Group products by original card name (for response)
     const results = {}
     
     cardNames.forEach(cardName => {
+      const normalizedSearch = normalizeCardName(cardName)
+      
       const matchingProducts = products.filter(p => 
-        p.matched_card_name === cardName
+        p.normalized_card_name === normalizedSearch
       )
 
       if (matchingProducts.length > 0) {

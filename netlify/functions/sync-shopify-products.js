@@ -2,8 +2,17 @@ const { createClient } = require('@supabase/supabase-js')
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY  // ✅ Use service role instead
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 )
+
+// Add the normalize helper function
+function normalizeCardName(name) {
+  if (!name) return ''
+  return name
+    .toLowerCase()
+    .replace(/[\s-]/g, '') // Remove spaces and hyphens
+    .replace(/[^a-z0-9]/g, '') // Remove special characters
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -40,16 +49,23 @@ exports.handler = async (event) => {
     const products = shopifyData.products || []
 
     // Save products to Supabase
-    const productsToInsert = products.map(product => ({
-      store_id: storeId,
-      shopify_product_id: product.id.toString(),
-      title: product.title,
-      vendor: product.vendor,
-      product_type: product.product_type,
-      variants: product.variants,
-      images: product.images,
-      updated_at: new Date().toISOString()
-    }))
+    const productsToInsert = products.map(product => {
+      // Extract card name from title (you might need to adjust this logic)
+      const matchedCardName = extractCardName(product.title)
+      
+      return {
+        store_id: storeId,
+        shopify_product_id: product.id.toString(),
+        title: product.title,
+        vendor: product.vendor,
+        product_type: product.product_type,
+        variants: product.variants,
+        images: product.images,
+        matched_card_name: matchedCardName,  // Add this
+        normalized_card_name: normalizeCardName(matchedCardName),  // Add this
+        updated_at: new Date().toISOString()
+      }
+    })
 
     // Delete old products for this store
     await supabase
@@ -84,4 +100,16 @@ exports.handler = async (event) => {
       body: JSON.stringify({ error: error.message })
     }
   }
+}
+
+// Helper function to extract card name from product title
+function extractCardName(title) {
+  // Simple version: just use the title as-is
+  // You might want to add logic to clean it up
+  // For example, remove set codes, conditions, etc.
+  
+  // Example: "Dark Magician - LOB-005 - Ultra Rare" → "Dark Magician"
+  const cardName = title.split('-')[0].trim()
+  
+  return cardName
 }
