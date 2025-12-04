@@ -10,6 +10,9 @@ function Dashboard() {
   const [showShopInput, setShowShopInput] = useState(false)
   const [connectedStore, setConnectedStore] = useState(null)
   const navigate = useNavigate()
+  const [syncing, setSyncing] = useState(false)
+const [productCount, setProductCount] = useState(0)
+  
 
   useEffect(() => {
     // Check if user is logged in
@@ -25,16 +28,28 @@ function Dashboard() {
   }, [navigate])
 
   const loadConnectedStore = async (userId) => {
-    const { data, error } = await supabase
-      .from('connected_stores')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+  const { data, error } = await supabase
+    .from('connected_stores')
+    .select('*')
+    .eq('user_id', userId)
+    .single()
 
-    if (data && !error) {
-      setConnectedStore(data)
-    }
+  if (data && !error) {
+    setConnectedStore(data)
+    loadProductCount(data.id)  // ✅ Add this line
   }
+}
+
+  const loadProductCount = async (storeId) => {
+  const { count, error } = await supabase
+    .from('products')
+    .select('*', { count: 'exact', head: true })
+    .eq('store_id', storeId)
+
+  if (!error) {
+    setProductCount(count || 0)
+  }
+}
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -72,6 +87,42 @@ function Dashboard() {
       alert('Store disconnected successfully')
     }
   }
+
+  const handleSyncProducts = async () => {
+  setSyncing(true)
+  
+  try {
+    const response = await fetch('/.netlify/functions/sync-shopify-products', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        storeId: connectedStore.id,
+        accessToken: connectedStore.access_token,
+        shopDomain: connectedStore.shop_domain,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Failed to sync products')
+    }
+
+    const data = await response.json()
+    
+    alert(`✅ Successfully synced ${data.productsCount} products!`)
+    
+    // Reload product count
+    loadProductCount(connectedStore.id)
+    
+  } catch (error) {
+    console.error('Sync error:', error)
+    alert(`❌ Error syncing products: ${error.message}`)
+  } finally {
+    setSyncing(false)
+  }
+}
 
   if (loading) {
     return (
@@ -190,8 +241,8 @@ function Dashboard() {
           }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📊</div>
             <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '4px' }}>
-              0
-            </h3>
+  {productCount}
+</h3>
             <p style={{ color: '#888', fontSize: '14px' }}>Total Products</p>
           </div>
 
@@ -305,17 +356,22 @@ function Dashboard() {
           
           {connectedStore && (
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-              <button style={{
-                padding: '12px 24px',
-                background: 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#0a0a1f',
-                fontWeight: 'bold',
-                cursor: 'pointer'
-              }}>
-                Sync Products
-              </button>
+            <button 
+  onClick={handleSyncProducts}
+  disabled={syncing}
+  style={{
+    padding: '12px 24px',
+    background: syncing ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
+    border: 'none',
+    borderRadius: '8px',
+    color: '#0a0a1f',
+    fontWeight: 'bold',
+    cursor: syncing ? 'not-allowed' : 'pointer',
+    opacity: syncing ? 0.6 : 1
+  }}
+>
+  {syncing ? 'Syncing...' : 'Sync Products'}
+</button>
               <button style={{
                 padding: '12px 24px',
                 background: 'transparent',
