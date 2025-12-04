@@ -41,6 +41,57 @@ function extractRarity(title) {
   return null
 }
 
+// Add this helper function at the top
+async function fetchCardDataFromYGOPro(cardName) {
+  if (!cardName) return null
+  
+  try {
+    let response = await fetch(
+      `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(cardName)}`
+    )
+    let data = await response.json()
+    
+    // If exact match fails, try fuzzy search
+    if (data.error) {
+      response = await fetch(
+        `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(cardName)}`
+      )
+      data = await response.json()
+    }
+    
+    if (data.data && data.data[0]) {
+      const card = data.data[0]
+      return {
+        description: card.desc,
+        type: card.type,
+        race: card.race,
+        archetype: card.archetype,
+        atk: card.atk,
+        def: card.def,
+        level: card.level,
+        attribute: card.attribute,
+        // Get set name from set code
+        sets: card.card_sets || []
+      }
+    }
+  } catch (error) {
+    console.warn(`Could not fetch YGOPro data for ${cardName}:`, error.message)
+  }
+  
+  return null
+}
+
+// Helper to find set name from set code
+function getSetName(setCode, ygoproSets) {
+  if (!setCode || !ygoproSets) return null
+  
+  const set = ygoproSets.find(s => 
+    s.set_code && s.set_code.toLowerCase() === setCode.toLowerCase()
+  )
+  
+  return set ? set.set_name : null
+}
+
 function extractCondition(title) {
   const conditions = [
     'Near Mint', 'Lightly Played', 'Moderately Played', 
@@ -141,51 +192,81 @@ exports.handler = async (event) => {
 
     console.log(`Found ${products.length} matching products`)
 
-    // Group products by original card name (for response)
-    const results = {}
-    
-    cardNames.forEach(cardName => {
-      const normalizedSearch = normalizeCardName(cardName)
-      
-      const matchingProducts = products.filter(p => 
-        p.normalized_card_name === normalizedSearch
-      )
+// NEW: Fetch YGOPro data once per unique card (before the loop)
+const ygoproDataCache = {}
 
-      if (matchingProducts.length > 0) {
-       results[cardName] = matchingProducts.map(product => {
-  const variant = product.variants?.[0] || {}
+for (const cardName of cardNames) {
+  const normalizedSearch = normalizeCardName(cardName)
+  const matchingProducts = products.filter(p => 
+    p.normalized_card_name === normalizedSearch
+  )
   
-  return {
-    productId: product.shopify_product_id,
-    variantId: variant.id,
-    title: product.title,
-    matchedCardName: product.matched_card_name,
-    price: parseFloat(variant.price) || 0,
-    compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
-    sku: variant.sku || '',
-    available: variant.inventory_quantity > 0,
-    inventoryQuantity: variant.inventory_quantity || 0,
-    image: product.images?.[0]?.src || null,
-    // Robust extraction from multiple sources
-    setCode: product.set_code || extractSetCode(product.title, variant.sku) || 'N/A',
-    rarity: product.rarity || extractRarity(product.title) || 'Common',
-    condition: product.condition || extractCondition(product.title),
-    edition: product.edition || extractEdition(product.title) || ''
+  if (matchingProducts.length > 0) {
+    // Fetch YGOPro data once for this card
+    const matchedCardName = matchingProducts[0].matched_card_name
+    console.log(`Fetching YGOPro data for: ${matchedCardName}`)
+    ygoproDataCache[cardName] = await fetchCardDataFromYGOPro(matchedCardName)
   }
-})
-      } else {
-        results[cardName] = []
+}
+
+// Group products by original card name (for response)
+const results = {}
+
+cardNames.forEach(cardName => {
+  const normalizedSearch = normalizeCardName(cardName)
+  
+  const matchingProducts = products.filter(p => 
+    p.normalized_card_name === normalizedSearch
+  )
+
+  if (matchingProducts.length > 0) {
+    const ygoproData = ygoproDataCache[cardName]
+    
+    // Map products to the format the deck builder expects
+    results[cardName] = matchingProducts.map(product => {
+      // Get the first variant for pricing
+      const variant = product.variants?.[0] || {}
+      const setCode = product.set_code || extractSetCode(product.title, variant.sku) || 'N/A'
+      
+      return {
+        productId: product.shopify_product_id,
+        variantId: variant.id,
+        title: product.title,
+        matchedCardName: product.matched_card_name,
+        price: parseFloat(variant.price) || 0,
+        compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
+        sku: variant.sku || '',
+        available: variant.inventory_quantity > 0,
+        inventoryQuantity: variant.inventory_quantity || 0,
+        image: product.images?.[0]?.src || null,
+        setCode: setCode,
+        setName: getSetName(setCode, ygoproData?.sets) || null,
+        rarity: product.rarity || extractRarity(product.title) || 'Common',
+        condition: product.condition || extractCondition(product.title),
+        edition: product.edition || extractEdition(product.title) || '',
+        // NEW: Rich card data from YGOProDeck
+        description: product.description || ygoproData?.description || '',
+        cardType: ygoproData?.type || '',
+        race: ygoproData?.race || '',
+        attribute: ygoproData?.attribute || '',
+        atk: ygoproData?.atk,
+        def: ygoproData?.def,
+        level: ygoproData?.level
       }
     })
+  } else {
+    results[cardName] = []
+  }
+})
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        results
-      })
-    }
+return {
+  statusCode: 200,
+  headers,
+  body: JSON.stringify({
+    success: true,
+    results
+  })
+}
 
   } catch (error) {
     console.error('Search inventory error:', error)
