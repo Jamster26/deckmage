@@ -14,28 +14,18 @@ function normalizeCardName(name) {
     .replace(/[^a-z0-9]/g, '') // Remove special characters
 }
 
-// Helper function to extract card name from product title
 function extractCardName(title) {
-  // Remove common suffixes like set codes, conditions, editions
-  let cleaned = title
-    
-  // Remove set codes (e.g., "LOB-005", "SDK-001")
-  cleaned = cleaned.replace(/\s*-?\s*[A-Z]{2,5}-[A-Z]?\d{3,4}\s*/gi, '')
+  // Split by hyphen and take the first part
+  const parts = title.split('-')
   
-  // Remove conditions
-  cleaned = cleaned.replace(/\s*-?\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|NM|LP|MP|HP|DMG)\s*/gi, '')
+  if (parts.length > 1) {
+    return parts[0].trim()
+  }
   
-  // Remove editions
-  cleaned = cleaned.replace(/\s*-?\s*(1st Edition|Limited Edition|Unlimited)\s*/gi, '')
-  
-  // Remove rarity
-  cleaned = cleaned.replace(/\s*-?\s*(Ultra Rare|Super Rare|Secret Rare|Rare|Common|Starlight|Ghost)\s*/gi, '')
-  
-  // Trim and return
-  return cleaned.trim()
+  // Fallback: return the whole title
+  return title.trim()
 }
 
-// NEW: Fetch official card name and image from YGOProDeck
 async function fetchCardData(cardName, productTitle) {
   if (!cardName) return null
   
@@ -55,11 +45,12 @@ async function fetchCardData(cardName, productTitle) {
       data = await response.json()
     }
     
-    // If still failing, try original title
+    // If still failing, try original title (cleaned)
     if (data.error && productTitle !== cardName) {
-      console.log(`⚠️ Trying original title "${productTitle}"...`)
+      const cleanTitle = productTitle.split('-')[0].trim() // Remove everything after first hyphen
+      console.log(`⚠️ Trying cleaned title "${cleanTitle}"...`)
       response = await fetch(
-        `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(productTitle)}`
+        `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(cleanTitle)}`
       )
       data = await response.json()
     }
@@ -68,7 +59,7 @@ async function fetchCardData(cardName, productTitle) {
       const card = data.data[0]
       console.log(`✅ Found official card data for: ${card.name}`)
       return {
-        officialName: card.name,  // ← Official name with hyphens
+        officialName: card.name,
         image: card.card_images?.[0]?.image_url || null
       }
     }
