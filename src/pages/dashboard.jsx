@@ -8,6 +8,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [shopDomain, setShopDomain] = useState('')
   const [showShopInput, setShowShopInput] = useState(false)
+  const [connectedStore, setConnectedStore] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -15,12 +16,25 @@ function Dashboard() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setUser(session.user)
+        loadConnectedStore(session.user.id)
       } else {
         navigate('/login')
       }
       setLoading(false)
     })
   }, [navigate])
+
+  const loadConnectedStore = async (userId) => {
+    const { data, error } = await supabase
+      .from('connected_stores')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (data && !error) {
+      setConnectedStore(data)
+    }
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -33,16 +47,30 @@ function Dashboard() {
       return
     }
     
-    // Clean up the domain (remove https://, .myshopify.com if included)
     let cleanDomain = shopDomain.toLowerCase().trim()
     cleanDomain = cleanDomain.replace('https://', '').replace('http://', '')
     
-    // If they didn't include .myshopify.com, add it
     if (!cleanDomain.includes('.myshopify.com')) {
       cleanDomain = `${cleanDomain}.myshopify.com`
     }
     
     initiateShopifyOAuth(cleanDomain)
+  }
+
+  const handleDisconnect = async () => {
+    if (!confirm('Are you sure you want to disconnect your Shopify store?')) {
+      return
+    }
+
+    const { error } = await supabase
+      .from('connected_stores')
+      .delete()
+      .eq('id', connectedStore.id)
+
+    if (!error) {
+      setConnectedStore(null)
+      alert('Store disconnected successfully')
+    }
   }
 
   if (loading) {
@@ -108,6 +136,45 @@ function Dashboard() {
           Your professional deck builder dashboard
         </p>
 
+        {/* Connected Store Banner */}
+        {connectedStore && (
+          <div style={{
+            background: 'linear-gradient(135deg, #00ff9d22, #2a9d8f22)',
+            border: '2px solid #00ff9d',
+            borderRadius: '16px',
+            padding: '24px',
+            marginBottom: '40px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#00ff9d', marginBottom: '8px' }}>
+                  ✅ Store Connected
+                </h3>
+                <p style={{ color: '#fff', fontSize: '1rem' }}>
+                  {connectedStore.shop_domain}
+                </p>
+                <p style={{ color: '#888', fontSize: '0.85rem', marginTop: '4px' }}>
+                  Connected on {new Date(connectedStore.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                onClick={handleDisconnect}
+                style={{
+                  padding: '10px 20px',
+                  background: 'transparent',
+                  border: '1px solid #e63946',
+                  borderRadius: '8px',
+                  color: '#e63946',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Stats Grid */}
         <div style={{
           display: 'grid',
@@ -166,7 +233,7 @@ function Dashboard() {
             Quick Actions
           </h3>
           
-          {!showShopInput ? (
+          {!connectedStore && !showShopInput && (
             <button 
               onClick={() => setShowShopInput(true)}
               style={{
@@ -181,7 +248,9 @@ function Dashboard() {
             >
               Connect Shopify Store
             </button>
-          ) : (
+          )}
+
+          {!connectedStore && showShopInput && (
             <div>
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>
                 Enter your Shopify store domain:
@@ -234,28 +303,41 @@ function Dashboard() {
             </div>
           )}
           
-          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '16px' }}>
-            <button style={{
-              padding: '12px 24px',
-              background: 'transparent',
-              border: '1px solid #2d2d44',
-              borderRadius: '8px',
-              color: '#fff',
-              cursor: 'pointer'
-            }}>
-              View Analytics
-            </button>
-            <button style={{
-              padding: '12px 24px',
-              background: 'transparent',
-              border: '1px solid #2d2d44',
-              borderRadius: '8px',
-              color: '#fff',
-              cursor: 'pointer'
-            }}>
-              Get Embed Code
-            </button>
-          </div>
+          {connectedStore && (
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              <button style={{
+                padding: '12px 24px',
+                background: 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#0a0a1f',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}>
+                Sync Products
+              </button>
+              <button style={{
+                padding: '12px 24px',
+                background: 'transparent',
+                border: '1px solid #2d2d44',
+                borderRadius: '8px',
+                color: '#fff',
+                cursor: 'pointer'
+              }}>
+                View Analytics
+              </button>
+              <button style={{
+                padding: '12px 24px',
+                background: 'transparent',
+                border: '1px solid #2d2d44',
+                borderRadius: '8px',
+                color: '#fff',
+                cursor: 'pointer'
+              }}>
+                Get Embed Code
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
