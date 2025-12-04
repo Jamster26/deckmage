@@ -567,16 +567,43 @@ loadProducts(data.id)
                
             </div>
 
-            {products.length > 12 && (
-              <p style={{ 
-                textAlign: 'center', 
-                marginTop: '20px', 
-                color: '#888',
-                fontSize: '0.9rem'
-              }}>
-                Showing 12 of {productCount} products
-              </p>
-            )}
+           <div style={{
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: '20px',
+  marginTop: '20px',
+  paddingTop: '20px',
+  borderTop: '1px solid #2d2d44'
+}}>
+  <p style={{ color: '#888', fontSize: '0.9rem' }}>
+    Showing {Math.min(12, products.length)} of {productCount} products
+  </p>
+  <button
+    onClick={() => navigate('/products')}
+    style={{
+      padding: '10px 20px',
+      background: 'transparent',
+      border: '1px solid #00ff9d',
+      borderRadius: '8px',
+      color: '#00ff9d',
+      cursor: 'pointer',
+      fontSize: '0.9rem',
+      fontWeight: '500',
+      transition: 'all 0.2s'
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.background = '#00ff9d'
+      e.currentTarget.style.color = '#0a0a1f'
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.background = 'transparent'
+      e.currentTarget.style.color = '#00ff9d'
+    }}
+  >
+    Manage All Products →
+  </button>
+</div>
           </div>
         )}
 

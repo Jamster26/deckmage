@@ -3,6 +3,8 @@ import DeckListInput from './DeckListInput'
 import Login from './pages/login'
 import Signup from './pages/signup'
 import Dashboard from './pages/dashboard'
+import Products from './pages/products'  // ← Add this
+
 import { useEffect, useState } from 'react'
 import ShopifyCallback from './pages/ShopifyCallback'
 
@@ -150,6 +152,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/products" element={<Products />} />  {/* ← Add this */}
+
         <Route path="/auth/shopify/callback" element={<ShopifyCallback />} />
 
       </Routes>
