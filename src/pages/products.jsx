@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate } from 'react-router-dom'
+import MatchModal from '../components/MatchModal'  // ← Added this (real component now)
+
 
 function Products() {
   const [user, setUser] = useState(null)
@@ -73,7 +75,7 @@ function Products() {
         color: '#fff'
       }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🃏</div>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>Card</div>
           <p>Loading products...</p>
         </div>
       </div>
@@ -256,7 +258,7 @@ function Products() {
               textAlign: 'center',
               color: '#888'
             }}>
-              <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🔍</div>
+              <div style={{ fontSize: '3rem', marginBottom: '20px' }}>Search</div>
               <p>No products found</p>
             </div>
           ) : (
@@ -325,7 +327,7 @@ function Products() {
                               justifyContent: 'center',
                               fontSize: '1.5rem'
                             }}>
-                              🃏
+                              Card
                             </div>
                           )}
                           <div>
@@ -386,7 +388,7 @@ function Products() {
                             border: '1px solid #00ff9d',
                             color: '#00ff9d'
                           }}>
-                            ✅ Matched
+                            Matched
                           </span>
                         ) : (
                           <span style={{
@@ -398,7 +400,7 @@ function Products() {
                             border: '1px solid #ffd700',
                             color: '#ffd700'
                           }}>
-                            ⚠️ Unmatched
+                            Unmatched
                           </span>
                         )}
                       </td>
@@ -439,8 +441,8 @@ function Products() {
 
       </div>
 
-      {/* Match Modal - We'll build this next! */}
-      {matchModalOpen && (
+      {/* Real MatchModal imported from components folder */}
+      {matchModalOpen && selectedProduct && (
         <MatchModal
           product={selectedProduct}
           onClose={() => {
@@ -454,50 +456,6 @@ function Products() {
           }}
         />
       )}
-    </div>
-  )
-}
-
-// Placeholder for Match Modal (we'll build this next)
-function MatchModal({ product, onClose, onSave }) {
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.8)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-      padding: '20px'
-    }}>
-      <div style={{
-        background: '#1a1a2e',
-        border: '1px solid #2d2d44',
-        borderRadius: '16px',
-        maxWidth: '800px',
-        width: '100%',
-        maxHeight: '90vh',
-        overflow: 'auto',
-        padding: '30px'
-      }}>
-        <h2 style={{ color: '#fff', marginBottom: '20px' }}>Match Product to Card</h2>
-        <p style={{ color: '#888' }}>Modal content coming next...</p>
-        <button onClick={onClose} style={{
-          marginTop: '20px',
-          padding: '10px 20px',
-          background: '#00ff9d',
-          border: 'none',
-          borderRadius: '8px',
-          color: '#0a0a1f',
-          cursor: 'pointer'
-        }}>
-          Close
-        </button>
-      </div>
     </div>
   )
 }
