@@ -38,33 +38,45 @@ function extractCardName(title) {
 async function fetchCardData(cardName, productTitle) {
   if (!cardName) return null
   
+  console.log(`\n🔍 FETCH CARD DATA START`)
+  console.log(`   Input cardName: "${cardName}"`)
+  console.log(`   Input productTitle: "${productTitle}"`)
+  
   try {
     // Try exact match first
+    console.log(`   🌐 Trying exact match...`)
     let response = await fetch(
       `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(cardName)}`
     )
     let data = await response.json()
     
-    // If exact match fails, try fuzzy search
     if (data.error) {
-      console.log(`⚠️ Exact match failed for "${cardName}", trying fuzzy search...`)
+      console.log(`   ❌ Exact match failed: ${data.error}`)
+      console.log(`   🌐 Trying fuzzy search...`)
+      
+      // Try fuzzy search
       response = await fetch(
         `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(cardName)}`
       )
       data = await response.json()
     }
-  
     
     if (data.data && data.data[0]) {
       const card = data.data[0]
-      console.log(`✅ Found official card data for: ${card.name}`)
+      console.log(`   ✅ FOUND: "${card.name}"`)
+      console.log(`   🖼️  Image: ${card.card_images?.[0]?.image_url}`)
+      console.log(`🔍 FETCH CARD DATA END\n`)
       return {
         officialName: card.name,
         image: card.card_images?.[0]?.image_url || null
       }
+    } else {
+      console.log(`   ❌ No results found`)
+      console.log(`🔍 FETCH CARD DATA END\n`)
     }
   } catch (error) {
-    console.warn(`⚠️ Could not fetch card data for ${cardName}:`, error.message)
+    console.warn(`   ⚠️ Error: ${error.message}`)
+    console.log(`🔍 FETCH CARD DATA END\n`)
   }
   
   return null
