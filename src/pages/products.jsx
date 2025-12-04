@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate } from 'react-router-dom'
 import MatchModal from '../components/MatchModal'  // ← Added this (real component now)
-import { searchYGOCards, extractCardName } from '../utils/ygoprodeck'  // ← Add this import
 
 
 
@@ -140,35 +139,40 @@ async function handleMatchAll() {
     setMatchProgress({ current: i + 1, total: unmatchedProducts.length })
 
     try {
-      // Extract card name from product title
-      const cardName = extractCardName(product.title)
+      // Use your backend to search (it queries local DB)
+      const response = await fetch('/.netlify/functions/search-inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopId: user.store_domain, // Adjust this to your store domain
+          cardNames: [product.title]
+        })
+      })
       
-      if (!cardName) {
+      const data = await response.json()
+      
+      if (!data.success || !data.results || Object.keys(data.results).length === 0) {
         failCount++
         continue
       }
 
-      // Search for the card
-      const results = await searchYGOCards(cardName)
+      // Get first matched card name
+      const cardName = Object.keys(data.results)[0]
+      const matches = data.results[cardName]
       
-      if (results.length === 0) {
+      if (!matches || matches.length === 0) {
         failCount++
         continue
       }
 
-      // Find best match - prioritize exact name matches
-      const exactMatch = results.find(card => 
-        card.name.toLowerCase() === cardName.toLowerCase()
-      )
-      
-      const matchedCard = exactMatch || results[0]
+      const matchedCard = matches[0]
 
       // Save the match
       const { error } = await supabase
         .from('products')
         .update({
-          matched_card_name: matchedCard.name,
-          matched_card_id: matchedCard.id.toString()
+          matched_card_name: matchedCard.matchedCardName,
+          normalized_card_name: matchedCard.matchedCardName.toLowerCase()
         })
         .eq('id', product.id)
 
@@ -179,8 +183,8 @@ async function handleMatchAll() {
         successCount++
       }
 
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 300))
+      // Small delay to avoid overwhelming backend
+      await new Promise(resolve => setTimeout(resolve, 500))
 
     } catch (error) {
       console.error('Error processing product:', error)

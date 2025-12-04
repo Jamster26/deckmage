@@ -121,37 +121,11 @@ const handleParse = async () => {
         batch.map(async (card) => {
           const shopProducts = data.results[card.cardName]
           
-          if (shopProducts && shopProducts.length > 0) {
-            const correctCardName = shopProducts[0].matchedCardName || card.cardName
-            let cardImage = shopProducts[0].image
-            
-            if (!cardImage) {
-              cardImage = 'https://images.ygoprodeck.com/images/cards/back.jpg'
-              
-              try {
-                let ygoproResponse = await fetch(
-                  `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(correctCardName)}`
-                )
-                let ygoproData = await ygoproResponse.json()
-                
-                if (ygoproData.error) {
-                  console.log(`Warning: Exact match failed for "${correctCardName}", trying fuzzy...`)
-                  ygoproResponse = await fetch(
-                    `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(card.cardName)}`
-                  )
-                  ygoproData = await ygoproResponse.json()
-                }
-                
-                if (ygoproData.data?.[0]?.card_images?.[0]?.image_url) {
-                  cardImage = ygoproData.data[0].card_images[0].image_url
-                  console.log(`Success: Got image for ${card.cardName}`)
-                }
-              } catch (err) {
-                console.warn(`Warning: Could not fetch image for ${card.cardName}:`, err)
-              }
-            } else {
-              console.log(`Success: Using shop image for ${card.cardName}`)
-            }
+       if (shopProducts && shopProducts.length > 0) {
+  const correctCardName = shopProducts[0].matchedCardName || card.cardName
+  const cardImage = shopProducts[0].image || 'https://images.ygoprodeck.com/images/cards/back.jpg'
+  
+  console.log(`✅ Found: ${card.cardName} (${shopProducts.length} versions available)`)
             
             return {
               found: true,

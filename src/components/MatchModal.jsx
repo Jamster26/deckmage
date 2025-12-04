@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import { searchYGOCards, extractCardName } from '../utils/ygoprodeck'
 
 // ADD THIS HELPER FUNCTION:
 function normalizeCardName(name) {
