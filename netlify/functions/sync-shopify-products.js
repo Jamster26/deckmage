@@ -111,34 +111,57 @@ exports.handler = async (event) => {
       products.map(async (product) => {
 const matchedCardName = extractCardName(product.title)
 
-// Fetch official card data from YGOProDeck
-const cardData = await fetchCardData(matchedCardName, product.title)
-
-// Use official name if found, otherwise use extracted name
-const finalCardName = cardData?.officialName || matchedCardName
-
-// Check if product has images
+// Check if product has Shopify images
 let productImages = product.images
+let finalCardName = matchedCardName
 
-// If no Shopify image, use YGOProDeck image
-if ((!productImages || productImages.length === 0) && cardData?.image) {
-  productImages = [{ src: cardData.image }]
-  console.log(`✅ Added YGOProDeck image for "${finalCardName}"`)
-
+// Only fetch from YGOProDeck if NO Shopify image exists
+if (!productImages || productImages.length === 0) {
+  console.log(`🔍 No Shopify image for "${product.title}"`)
+  
+  // Check if we already have this product in the database with an image
+  const { data: existingProduct } = await supabase
+    .from('products')
+    .select('images, matched_card_name')
+    .eq('store_id', storeId)
+    .eq('shopify_product_id', product.id.toString())
+    .single()
+  
+  if (existingProduct?.images && existingProduct.images.length > 0) {
+    // Use existing image from database (don't fetch again)
+    productImages = existingProduct.images
+    finalCardName = existingProduct.matched_card_name
+    console.log(`✅ Using existing database image for "${product.title}"`)
+  } else {
+    // Fetch from YGOProDeck (first time only)
+    console.log(`🌐 Fetching from YGOProDeck...`)
+    const cardData = await fetchCardData(matchedCardName, product.title)
+    finalCardName = cardData?.officialName || matchedCardName
+    
+    if (cardData?.image) {
+      productImages = [{ src: cardData.image }]
+      console.log(`✅ Added YGOProDeck image for "${finalCardName}"`)
+    }
+  }
+} else {
+  // Has Shopify image - just get official name
+  console.log(`✅ Using Shopify image for "${product.title}"`)
+  const cardData = await fetchCardData(matchedCardName, product.title)
+  finalCardName = cardData?.officialName || matchedCardName
 }
-        
-        return {
-          store_id: storeId,
-          shopify_product_id: product.id.toString(),
-          title: product.title,
-          vendor: product.vendor,
-          product_type: product.product_type,
-          variants: product.variants,
-          images: productImages,  // Now includes YGOProDeck images if needed
-  matched_card_name: finalCardName,  // ← Now uses official name!
+
+return {
+  store_id: storeId,
+  shopify_product_id: product.id.toString(),
+  title: product.title,
+  vendor: product.vendor,
+  product_type: product.product_type,
+  variants: product.variants,
+  images: productImages,
+  matched_card_name: finalCardName,
   normalized_card_name: normalizeCardName(finalCardName),
-          updated_at: new Date().toISOString()
-        }
+  updated_at: new Date().toISOString()
+}
       })
     )
 
