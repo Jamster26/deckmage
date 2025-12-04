@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate } from 'react-router-dom'
 import MatchModal from '../components/MatchModal'  // ← Added this (real component now)
+import { searchYGOCards, extractCardName } from '../utils/ygoprodeck'  // ← Add this import
+
 
 
 function Products() {
@@ -12,6 +14,9 @@ function Products() {
   const [filterStatus, setFilterStatus] = useState('all') // all, matched, unmatched
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [matchModalOpen, setMatchModalOpen] = useState(false)
+    const [autoMatching, setAutoMatching] = useState(false)  // ← Add this
+  const [matchProgress, setMatchProgress] = useState({ current: 0, total: 0 })  // ← Add this
+
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -60,6 +65,8 @@ function Products() {
 }
 
   function openMatchModal(product) {
+      console.log('Opening match modal for product:', product)
+
     setSelectedProduct(product)
     setMatchModalOpen(true)
   }
@@ -94,6 +101,90 @@ function Products() {
           <p>Loading products...</p>
         </div>
       </div>
+    )
+  }
+
+   // ← Add this new function
+  async function handleMatchAll() {
+    const unmatchedProducts = products.filter(p => !p.matched_card_name)
+    
+    if (unmatchedProducts.length === 0) {
+      alert('All products are already matched!')
+      return
+    }
+
+    const confirmed = confirm(
+      `This will attempt to automatically match ${unmatchedProducts.length} unmatched products. Continue?`
+    )
+    
+    if (!confirmed) return
+
+    setAutoMatching(true)
+    setMatchProgress({ current: 0, total: unmatchedProducts.length })
+
+    let successCount = 0
+    let failCount = 0
+
+    for (let i = 0; i < unmatchedProducts.length; i++) {
+      const product = unmatchedProducts[i]
+      setMatchProgress({ current: i + 1, total: unmatchedProducts.length })
+
+      try {
+        // Extract card name from product title
+        const cardName = extractCardName(product.title)
+        
+        if (!cardName) {
+          failCount++
+          continue
+        }
+
+        // Search for the card
+        const results = await searchYGOCards(cardName)
+        
+        if (results.length === 0) {
+          failCount++
+          continue
+        }
+
+        // Take the first match (most relevant)
+        const matchedCard = results[0]
+
+        // Save the match
+        const { error } = await supabase
+          .from('products')
+          .update({
+            matched_card_name: matchedCard.name
+          })
+          .eq('id', product.id)
+
+        if (error) {
+          console.error('Error auto-matching:', error)
+          failCount++
+        } else {
+          successCount++
+        }
+
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 300))
+
+      } catch (error) {
+        console.error('Error processing product:', error)
+        failCount++
+      }
+    }
+
+    setAutoMatching(false)
+    setMatchProgress({ current: 0, total: 0 })
+
+    // Refresh products
+    await fetchProducts(user.id)
+
+    // Show results
+    alert(
+      `Auto-matching complete!\n\n` +
+      `✅ Successfully matched: ${successCount}\n` +
+      `❌ Failed to match: ${failCount}\n\n` +
+      `You can manually match the remaining products.`
     )
   }
 
@@ -187,8 +278,12 @@ function Products() {
             display: 'flex',
             gap: '20px',
             flexWrap: 'wrap',
-            alignItems: 'center'
+            alignItems: 'center',
+                        justifyContent: 'space-between'  // ← Change this
+
           }}>
+                        <div style={{ display: 'flex', gap: '20px', flex: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+
             {/* Search */}
             <input
               type="text"
@@ -256,9 +351,67 @@ function Products() {
               >
                 Unmatched ({unmatchedCount})
               </button>
+       </div>
+          </div>
+
+          {/* Match All Button - ADD THIS */}
+          {unmatchedCount > 0 && (
+            <button
+              onClick={handleMatchAll}
+              disabled={autoMatching}
+              style={{
+                padding: '12px 24px',
+                background: autoMatching ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#0a0a1f',
+                cursor: autoMatching ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '1rem',
+                opacity: autoMatching ? 0.6 : 1,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {autoMatching 
+                ? `Matching ${matchProgress.current}/${matchProgress.total}...` 
+                : `🪄 Match All (${unmatchedCount})`
+              }
+            </button>
+          )}
+        </div>
+      </div>
+
+{/* Progress Bar - ADD THIS */}
+        {autoMatching && (
+          <div style={{
+            background: '#1a1a2e',
+            border: '1px solid #2d2d44',
+            borderRadius: '12px',
+            padding: '20px',
+            marginBottom: '30px'
+          }}>
+            <div style={{ marginBottom: '12px', color: '#fff', fontSize: '1rem' }}>
+              Auto-matching products... {matchProgress.current} of {matchProgress.total}
+            </div>
+            <div style={{
+              width: '100%',
+              height: '8px',
+              background: '#0a0a1f',
+              borderRadius: '4px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${(matchProgress.current / matchProgress.total) * 100}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #00ff9d, #2a9d8f)',
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+            <div style={{ marginTop: '8px', color: '#888', fontSize: '0.85rem' }}>
+              Please don't close this page...
             </div>
           </div>
-        </div>
+        )}
 
         {/* Products Table */}
         <div style={{
@@ -421,31 +574,35 @@ function Products() {
                       </td>
 
                       {/* Action Button */}
-                      <td style={{ padding: '16px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => openMatchModal(product)}
-                          style={{
-                            padding: '8px 16px',
-                            borderRadius: '8px',
-                            border: '1px solid #2d2d44',
-                            background: '#0a0a1f',
-                            color: '#00ff9d',
-                            cursor: 'pointer',
-                            fontSize: '0.9rem',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#00ff9d'
-                            e.currentTarget.style.color = '#0a0a1f'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#0a0a1f'
-                            e.currentTarget.style.color = '#00ff9d'
-                          }}
-                        >
-                          {product.matched_card_name ? 'Edit Match' : 'Match Card'}
-                        </button>
-                      </td>
+                    {/* Action Button */}
+<td style={{ padding: '16px', textAlign: 'right' }}>
+  <button
+    onClick={() => {
+      console.log('Match button clicked for:', product.title)
+      openMatchModal(product)
+    }}
+    style={{
+      padding: '8px 16px',
+      borderRadius: '8px',
+      border: '1px solid #2d2d44',
+      background: '#0a0a1f',
+      color: '#00ff9d',
+      cursor: 'pointer',
+      fontSize: '0.9rem',
+      transition: 'all 0.2s'
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.background = '#00ff9d'
+      e.currentTarget.style.color = '#0a0a1f'
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.background = '#0a0a1f'
+      e.currentTarget.style.color = '#00ff9d'
+    }}
+  >
+    {product.matched_card_name ? 'Edit Match' : 'Match Card'}
+  </button>
+</td>
                     </tr>
                   )
                 })}
