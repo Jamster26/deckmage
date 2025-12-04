@@ -9,6 +9,7 @@ function Dashboard() {
   const [shopDomain, setShopDomain] = useState('')
   const [showShopInput, setShowShopInput] = useState(false)
   const [connectedStore, setConnectedStore] = useState(null)
+  const [products, setProducts] = useState([])  // ✅ Add this
   const navigate = useNavigate()
   const [syncing, setSyncing] = useState(false)
 const [productCount, setProductCount] = useState(0)
@@ -36,18 +37,28 @@ const [productCount, setProductCount] = useState(0)
 
   if (data && !error) {
     setConnectedStore(data)
-    loadProductCount(data.id)  // ✅ Add this line
+loadProducts(data.id)
   }
 }
 
-  const loadProductCount = async (storeId) => {
-  const { count, error } = await supabase
+  const loadProducts = async (storeId) => {
+  // Get count
+  const { count } = await supabase
     .from('products')
     .select('*', { count: 'exact', head: true })
     .eq('store_id', storeId)
 
-  if (!error) {
-    setProductCount(count || 0)
+  setProductCount(count || 0)
+
+  // Get actual products
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('store_id', storeId)
+    .order('created_at', { ascending: false })
+
+  if (data && !error) {
+    setProducts(data)
   }
 }
 
@@ -114,7 +125,7 @@ const [productCount, setProductCount] = useState(0)
     alert(`✅ Successfully synced ${data.productsCount} products!`)
     
     // Reload product count
-    loadProductCount(connectedStore.id)
+    loadProducts(connectedStore.id)
     
   } catch (error) {
     console.error('Sync error:', error)
@@ -395,8 +406,96 @@ const [productCount, setProductCount] = useState(0)
             </div>
           )}
         </div>
-      </div>
-    </div>
+     
+
+    {/* 🟢 PASTE THE ENTIRE PRODUCTS LIST CODE RIGHT HERE 🟢 */}
+        {connectedStore && products.length > 0 && (
+          <div style={{
+            background: '#1a1a2e',
+            border: '1px solid #2d2d44',
+            borderRadius: '16px',
+            padding: '32px',
+            marginTop: '40px'
+          }}>
+            <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '20px' }}>
+              Your Products ({productCount})
+            </h3>
+            
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '20px'
+            }}>
+              {products.slice(0, 12).map(product => (
+                <div key={product.id} style={{
+                  background: '#0a0a1f',
+                  border: '1px solid #2d2d44',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}>
+                  {product.images && product.images[0] && (
+                    <img 
+                      src={product.images[0].src} 
+                      alt={product.title}
+                      style={{
+                        width: '100%',
+                        height: '200px',
+                        objectFit: 'cover',
+                        borderRadius: '8px'
+                      }}
+                    />
+                  )}
+                  <div>
+                    <h4 style={{ 
+                      fontSize: '1rem', 
+                      fontWeight: 'bold',
+                      marginBottom: '4px',
+                      color: '#fff'
+                    }}>
+                      {product.title}
+                    </h4>
+                    {product.vendor && (
+                      <p style={{ fontSize: '0.85rem', color: '#888' }}>
+                        by {product.vendor}
+                      </p>
+                    )}
+                    {product.product_type && (
+                      <p style={{ fontSize: '0.85rem', color: '#888' }}>
+                        {product.product_type}
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ 
+                    borderTop: '1px solid #2d2d44',
+                    paddingTop: '12px',
+                    marginTop: 'auto'
+                  }}>
+                    <p style={{ fontSize: '0.85rem', color: '#888' }}>
+                      {product.variants?.length || 0} variant(s)
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {products.length > 12 && (
+              <p style={{ 
+                textAlign: 'center', 
+                marginTop: '20px', 
+                color: '#888',
+                fontSize: '0.9rem'
+              }}>
+                Showing 12 of {productCount} products
+              </p>
+            )}
+          </div>
+        )}
+
+      </div>        // ← Main Content closes here
+    </div>          // ← Outer container closes here
   )
 }
 
