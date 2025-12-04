@@ -1,31 +1,26 @@
 import { createClient } from '@supabase/supabase-js'
-// REMOVED: import pLimit from 'p-limit';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// In search-inventory.js - REPLACE your normalizeCardName with this:
 function normalizeCardName(name) {
   if (!name) return '';
   return name
     .toLowerCase()
-    .replace(/[''"]/g, '')           
-    .replace(/[-–—∙•·]/g, ' ')       
-    .replace(/[^\w\s]/g, '')         
-    .replace(/\s+/g, ' ')            
+    .replace(/[''"]/g, '')
+    .replace(/[-–—∙•·]/g, ' ')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
-// Add these helper functions at the top of the file
 function extractSetCode(title, sku) {
-  // Priority 1: Use SKU if it looks like a set code
   if (sku && /^[A-Z]{2,5}-[A-Z]?\d{3,4}/i.test(sku)) {
     return sku.match(/([A-Z]{2,5}-[A-Z]?\d{3,4})/i)[1]
   }
   
-  // Priority 2: Extract from title
   const match = title.match(/([A-Z]{2,5}-[A-Z]?\d{3,4})/i)
   return match ? match[1] : null
 }
@@ -46,56 +41,6 @@ function extractRarity(title) {
   return null
 }
 
-async function fetchCardDataFromYGOPro(cardName) {
-  if (!cardName) return null
-  
-  try {
-    let response = await fetch(
-      `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(cardName)}`
-    )
-    
-    if (!response.ok) {
-      throw new Error(`YGOPro API returned ${response.status}`)
-    }
-    
-    let data = await response.json()
-    
-    // If exact match fails, try fuzzy search
-    if (data.error) {
-      response = await fetch(
-        `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(cardName)}`
-      )
-      
-      if (!response.ok) {
-        throw new Error(`YGOPro API returned ${response.status}`)
-      }
-      
-      data = await response.json()
-    }
-    
-    if (data.data && data.data[0]) {
-      const card = data.data[0]
-      return {
-        description: card.desc,
-        type: card.type,
-        race: card.race,
-        archetype: card.archetype,
-        atk: card.atk,
-        def: card.def,
-        level: card.level,
-        attribute: card.attribute,
-        sets: card.card_sets || []
-      }
-    }
-  } catch (error) {
-    console.warn(`Could not fetch YGOPro data for ${cardName}:`, error.message)
-    return null
-  }
-  
-  return null
-}
-
-// Helper to find set name from set code
 function getSetName(setCode, ygoproSets) {
   if (!setCode || !ygoproSets) return null
   
@@ -115,7 +60,6 @@ function extractCondition(title) {
   
   for (const condition of conditions) {
     if (title.toLowerCase().includes(condition.toLowerCase())) {
-      // Expand abbreviations
       if (condition === 'NM') return 'Near Mint'
       if (condition === 'LP') return 'Lightly Played'
       if (condition === 'MP') return 'Moderately Played'
@@ -168,9 +112,6 @@ export const handler = async (event) => {
       }
     }
 
-    console.log(`Searching inventory for shop: ${shopId}`)
-    console.log(`Card names:`, cardNames)
-
     const { data: store, error: storeError } = await supabase
       .from('connected_stores')
       .select('id')
@@ -188,8 +129,7 @@ export const handler = async (event) => {
     const normalizedCardNames = cardNames.map(normalizeCardName)
     const uniqueNormalized = [...new Set(normalizedCardNames)]
 
-    console.log('Normalized search terms:', normalizedCardNames)
-
+    // Fetch products from database
     const chunkSize = 30
     const chunks = []
     for (let i = 0; i < uniqueNormalized.length; i += chunkSize) {
@@ -209,47 +149,23 @@ export const handler = async (event) => {
 
     console.log(`Found ${products.length} matching products`)
 
-    // Fetch YGOPro data with manual batching
-    const ygoproDataCache = {}
-    const BATCH_SIZE = 8
+    // 🆕 NEW: Fetch card data from LOCAL database (no API calls!)
+    const uniqueCardNames = [...new Set(products.map(p => p.matched_card_name))]
 
-    try {
-      for (let i = 0; i < cardNames.length; i += BATCH_SIZE) {
-        const batch = cardNames.slice(i, i + BATCH_SIZE)
-        
-        const batchPromises = batch.map(async (cardName) => {
-          const normalizedSearch = normalizeCardName(cardName)
-          const matchingProducts = products.filter(p => 
-            p.normalized_card_name === normalizedSearch
-          )
-          
-          if (matchingProducts.length > 0) {
-            const matchedCardName = matchingProducts[0].matched_card_name
-            console.log(`Fetching YGOPro data for: ${matchedCardName}`)
-            
-            try {
-              const data = await fetchCardDataFromYGOPro(matchedCardName)
-              return [cardName, data]
-            } catch (error) {
-              console.error(`Failed to fetch YGOPro data for ${matchedCardName}:`, error)
-              return [cardName, null]
-            }
-          }
-          return [cardName, null]
-        })
+    const { data: cardDataArray } = await supabase
+      .from('yugioh_cards')
+      .select('*')
+      .in('name', uniqueCardNames)
 
-        const batchResults = await Promise.all(batchPromises)
-        batchResults.forEach(([cardName, data]) => {
-          ygoproDataCache[cardName] = data
-        })
-        
-        if (i + BATCH_SIZE < cardNames.length) {
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    } catch (error) {
-      console.error('Error in YGOPro fetch loop:', error)
+    // Create lookup map
+    const cardDataMap = {}
+    if (cardDataArray) {
+      cardDataArray.forEach(card => {
+        cardDataMap[card.name] = card
+      })
     }
+
+    console.log(`Fetched card data for ${Object.keys(cardDataMap).length} unique cards from local DB`)
 
     const results = {}
 
@@ -261,7 +177,8 @@ export const handler = async (event) => {
       )
 
       if (matchingProducts.length > 0) {
-        const ygoproData = ygoproDataCache[cardName]
+        // Get card data from local database
+        const cardData = cardDataMap[matchingProducts[0].matched_card_name]
         
         results[cardName] = matchingProducts.map(product => {
           const variant = product.variants?.[0] || {}
@@ -279,17 +196,18 @@ export const handler = async (event) => {
             inventoryQuantity: variant.inventory_quantity || 0,
             image: product.images?.[0]?.src || null,
             setCode: setCode,
-            setName: getSetName(setCode, ygoproData?.sets) || null,
+            setName: getSetName(setCode, cardData?.card_sets) || null,
             rarity: product.rarity || extractRarity(product.title) || 'Common',
             condition: product.condition || extractCondition(product.title),
             edition: product.edition || extractEdition(product.title) || '',
-            description: product.description || ygoproData?.description || '',
-            cardType: ygoproData?.type || '',
-            race: ygoproData?.race || '',
-            attribute: ygoproData?.attribute || '',
-            atk: ygoproData?.atk,
-            def: ygoproData?.def,
-            level: ygoproData?.level
+            // 🆕 Use LOCAL database card data (no API call!)
+            description: cardData?.description || '',
+            cardType: cardData?.type || '',
+            race: cardData?.race || '',
+            attribute: cardData?.attribute || '',
+            atk: cardData?.atk,
+            def: cardData?.def,
+            level: cardData?.level
           }
         })
       } else {

@@ -1,13 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Check for environment variables
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('❌ Missing environment variables!')
-  console.error('VITE_SUPABASE_URL:', supabaseUrl ? 'Found' : 'Missing')
-  console.error('SUPABASE_SERVICE_ROLE_KEY:', supabaseKey ? 'Found' : 'Missing')
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey)
@@ -39,22 +36,11 @@ function fixCommonCardNameVariants(name) {
 function extractCardName(title) {
   let cleaned = title
   
-  // Remove set codes like "LOB-005" but NOT card name hyphens
   cleaned = cleaned.replace(/\b[A-Z]{2,5}-[A-Z]?\d{3,4}\b/gi, '')
-  
-  // Remove conditions
   cleaned = cleaned.replace(/\s*-?\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|Mint|NM|LP|MP|HP|DMG)\s*/gi, '')
-  
-  // Remove editions  
   cleaned = cleaned.replace(/\s*-?\s*(1st Edition|Limited Edition|Unlimited|1st)\s*/gi, '')
-  
-  // Remove rarity
   cleaned = cleaned.replace(/\s*-?\s*(Starlight Rare|Ghost Rare|Ultimate Rare|Ultra Rare|Super Rare|Secret Rare|Prismatic Secret|Quarter Century|Collector's Rare|Rare|Common)\s*/gi, '')
-  
-  // Clean up extra spaces and trim
   cleaned = cleaned.replace(/\s+/g, ' ').trim()
-  
-  // Fix common name variants
   cleaned = fixCommonCardNameVariants(cleaned)
   
   return cleaned
@@ -71,110 +57,160 @@ const normalizeCardName = (str) => {
     .trim();
 };
 
-async function fetchCardData(cardName, productTitle = '') {
+// 🆕 NEW: Get card data from local database first, API fallback
+async function getCardData(cardName) {
   if (!cardName?.trim()) return null;
 
-  const originalName = cardName.trim();
-  const normalizedInput = normalizeCardName(originalName);
-
-  console.log(`\n🔍 Searching for: "${originalName}" → normalized: "${normalizedInput}"`);
-
-  const extractCard = (card) => ({
-    officialName: card.name,
-    image: card.card_images?.[0]?.image_url || card.card_images?.[0]?.image_url_cropped || null,
-    type: card.type,
-    id: card.id
-  });
+  const searchName = cardName.trim();
+  console.log(`🔍 Looking up: "${searchName}"`);
 
   try {
-    // Step 1: Try exact API match
-    let res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(originalName)}`);
+    // STEP 1: Check local database first (99.9% of cases)
+    const { data: localCard, error: localError } = await supabase
+      .from('yugioh_cards')
+      .select('*')
+      .or(`name.ilike.%${searchName}%,normalized_name.eq.${normalizeCardName(searchName)}`)
+      .limit(10);
+
+    if (localCard && localCard.length > 0) {
+      // Score and pick best match
+      const scored = localCard.map(card => {
+        const normCard = normalizeCardName(card.name);
+        const normSearch = normalizeCardName(searchName);
+        const exact = normCard === normSearch;
+        const includes = normCard.includes(normSearch);
+        const startsWith = normCard.startsWith(normSearch.split(' ')[0]);
+        
+        return {
+          card,
+          score: exact ? 100 : includes ? 80 : startsWith ? 50 : 10
+        };
+      }).sort((a, b) => b.score - a.score);
+
+      const best = scored[0];
+      
+      if (best.score >= 50) {
+        console.log(`✅ Found in local DB: "${best.card.name}" (score: ${best.score})`);
+        return {
+          officialName: best.card.name,
+          image: best.card.image_url,
+          type: best.card.type,
+          id: best.card.id,
+          description: best.card.description,
+          race: best.card.race,
+          attribute: best.card.attribute,
+          atk: best.card.atk,
+          def: best.card.def,
+          level: best.card.level,
+          sets: best.card.card_sets
+        };
+      }
+    }
+
+    // STEP 2: Not in database - fallback to API (rare - new cards only)
+    console.log(`⚠️ Not in local DB, trying YGOProDeck API...`);
+    
+    let res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(searchName)}`);
     let json = await res.json();
 
     if (!json.error && json.data?.[0]) {
-      console.log(`✅ Exact match: "${json.data[0].name}"`);
-      return extractCard(json.data[0]);
+      const card = json.data[0];
+      console.log(`✅ Found via API: "${card.name}"`);
+      
+      // STEP 3: Save to local database for next time
+      console.log(`💾 Caching card in local database...`);
+      await supabase.from('yugioh_cards').upsert({
+        id: card.id,
+        name: card.name,
+        type: card.type,
+        race: card.race,
+        attribute: card.attribute,
+        atk: card.atk ?? null,
+        def: card.def ?? null,
+        level: card.level ?? null,
+        scale: card.scale ?? null,
+        linkval: card.linkval ?? null,
+        description: card.desc,
+        image_url: card.card_images?.[0]?.image_url,
+        image_url_small: card.card_images?.[0]?.image_url_small,
+        image_url_cropped: card.card_images?.[0]?.image_url_cropped,
+        archetype: card.archetype,
+        card_sets: card.card_sets,
+        card_prices: card.card_prices,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      
+      console.log(`✅ Cached for future use`);
+      
+      return {
+        officialName: card.name,
+        image: card.card_images?.[0]?.image_url,
+        type: card.type,
+        id: card.id,
+        description: card.desc,
+        race: card.race,
+        attribute: card.attribute,
+        atk: card.atk,
+        def: card.def,
+        level: card.level,
+        sets: card.card_sets
+      };
     }
 
-    // Step 2: Fuzzy search
-    console.log(`⚠️ No exact match, trying fuzzy...`);
-    console.log(`   Original: "${originalName}"`);
-    
-    const searchWords = originalName.split(/\s+/).slice(0, 4);
-    const fuzzyQuery = searchWords.join(' ');
-    
-    console.log(`   Fuzzy query: "${fuzzyQuery}"`);
-
-    const fuzzyUrl = `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(fuzzyQuery)}&num=50&offset=0`;
-    
-    res = await fetch(fuzzyUrl);
+    // Try fuzzy search on API as last resort
+    console.log(`⚠️ Trying fuzzy API search...`);
+    const fuzzyQuery = searchName.split(/\s+/).slice(0, 3).join(' ');
+    res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(fuzzyQuery)}&num=10`);
     json = await res.json();
 
-    console.log(`   API Response:`, json.error ? `ERROR: ${json.error}` : `${json.data?.length || 0} cards found`);
-
-    if (json.error) {
-      console.log(`❌ YGOProDeck error: ${json.error}`);
+    if (json.data && json.data.length > 0) {
+      const card = json.data[0];
+      console.log(`⚠️ Fuzzy match: "${card.name}"`);
+      
+      // Cache this too
+      await supabase.from('yugioh_cards').upsert({
+        id: card.id,
+        name: card.name,
+        type: card.type,
+        race: card.race,
+        attribute: card.attribute,
+        atk: card.atk ?? null,
+        def: card.def ?? null,
+        level: card.level ?? null,
+        description: card.desc,
+        image_url: card.card_images?.[0]?.image_url,
+        image_url_small: card.card_images?.[0]?.image_url_small,
+        archetype: card.archetype,
+        card_sets: card.card_sets,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      
+      return {
+        officialName: card.name,
+        image: card.card_images?.[0]?.image_url,
+        type: card.type,
+        id: card.id
+      };
     }
 
-    if (!json.data?.length) {
-      console.log(`❌ No results for "${fuzzyQuery}"`);
-      return null;
-    }
-
-    console.log(`   Top 3 results:`);
-    json.data.slice(0, 3).forEach((card, i) => {
-      console.log(`      ${i + 1}. "${card.name}"`);
-    });
-
-    const candidates = json.data;
-
-    // Step 3: Score candidates
-    const scored = candidates
-      .map(card => {
-        const norm = normalizeCardName(card.name);
-        const exact = norm === normalizedInput;
-        const includes = norm.includes(normalizedInput);
-        const startsWith = norm.startsWith(normalizedInput.split(' ')[0]);
-        const wordMatchRatio = normalizedInput.split(' ').filter(w => norm.includes(w)).length;
-
-        return {
-          card,
-          score: exact ? 100 : 
-                 includes ? 80 + wordMatchRatio * 5 :
-                 startsWith ? 50 + wordMatchRatio * 3 : 
-                 wordMatchRatio * 10
-        };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    const best = scored[0];
-    
-    if (best.score >= 80) {
-      console.log(`✅ Strong match (${best.score}): "${best.card.name}"`);
-      return extractCard(best.card);
-    } else if (best.score >= 50) {
-      console.log(`⚠️  Weak match (${best.score}): "${best.card.name}"`);
-      return extractCard(best.card);
-    } else {
-      console.log(`❌ Best score too low (${best.score}), rejecting`);
-      return null;
-    }
+    console.log(`❌ Card not found anywhere`);
+    return null;
 
   } catch (err) {
-    console.error('API error:', err.message);
+    console.error('❌ Error fetching card data:', err.message);
     return null;
   }
 }
 
-async function fetchCardDataCached(cardName, productTitle, cache) {
+async function getCardDataCached(cardName, productTitle, cache) {
   const key = normalizeCardName(cardName);
   
   if (cache.has(key)) {
-    console.log(`   ♻️  Using cached result from this sync`);
+    console.log(`   ♻️  Using sync session cache`);
     return cache.get(key);
   }
   
-  const result = await fetchCardData(cardName, productTitle);
+  const result = await getCardData(cardName);
   if (result) {
     cache.set(key, result);
   }
@@ -202,7 +238,6 @@ export const handler = async (event) => {
 
     console.log(`📦 Fetching products from Shopify: ${shopDomain}`)
 
-    // Fetch all products from Shopify
     const shopifyResponse = await fetch(
       `https://${shopDomain}/admin/api/2024-01/products.json?limit=250`,
       {
@@ -225,7 +260,7 @@ export const handler = async (event) => {
 
     const cardCache = new Map()
     const productsToInsert = []
-    const BATCH_SIZE = 5  // Slower batches for development
+    const BATCH_SIZE = 10
 
     for (let i = 0; i < products.length; i += BATCH_SIZE) {
       const batch = products.slice(i, i + BATCH_SIZE)
@@ -242,8 +277,9 @@ export const handler = async (event) => {
 
           let productImages = product.images
           let finalCardName = matchedCardName
+          let cardData = null
 
-          // ✅ NEW: Check database cache FIRST before hitting API
+          // Check database cache first
           const { data: existingProduct } = await supabase
             .from('products')
             .select('images, matched_card_name')
@@ -254,41 +290,38 @@ export const handler = async (event) => {
           if (!productImages || productImages.length === 0) {
             console.log(`🔍 No Shopify image`)
             
-            // ✅ PRIORITY 1: Use existing database image if available
             if (existingProduct?.images && existingProduct.images.length > 0) {
               productImages = existingProduct.images
               finalCardName = existingProduct.matched_card_name
-              console.log(`♻️  Using cached image from database (avoiding API call)`)
-            } 
-            // ⚠️ ONLY fetch from API if no cache exists
-            else {
-              console.log(`🌐 No cache found, fetching from YGOProDeck...`)
-              const cardData = await fetchCardDataCached(matchedCardName, product.title, cardCache)
+              console.log(`♻️  Using cached product image`)
+            } else {
+              cardData = await getCardDataCached(matchedCardName, product.title, cardCache)
               
-              finalCardName = cardData?.officialName || matchedCardName
-              
-              if (cardData?.image) {
-                productImages = [{ src: cardData.image }]
-                console.log(`✅ Added YGOProDeck image`)
+              if (cardData) {
+                finalCardName = cardData.officialName || matchedCardName
+                
+                if (cardData.image) {
+                  productImages = [{ src: cardData.image }]
+                  console.log(`✅ Added card image`)
+                }
               } else {
-                console.log(`⚠️  No image found from YGOProDeck`)
+                console.log(`⚠️  No card data found`)
               }
             }
           } else {
             console.log(`✅ Has Shopify image`)
             
-            // Still update card name if we have cached data
             if (existingProduct?.matched_card_name) {
               finalCardName = existingProduct.matched_card_name
-              console.log(`♻️  Using cached card name from database`)
             } else {
-              const cardData = await fetchCardDataCached(matchedCardName, product.title, cardCache)
-              finalCardName = cardData?.officialName || matchedCardName
+              cardData = await getCardDataCached(matchedCardName, product.title, cardCache)
+              if (cardData) {
+                finalCardName = cardData.officialName || matchedCardName
+              }
             }
           }
 
           console.log(`📝 Final card name: "${finalCardName}"`)
-          console.log(`📝 Normalized: "${normalizeCardName(finalCardName)}"`)
           console.log(`====================================\n`)
 
           return {
@@ -310,9 +343,8 @@ export const handler = async (event) => {
       
       console.log(`✅ Completed batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(products.length/BATCH_SIZE)}`)
       
-      // Longer delay for development (less rate limit issues)
       if (i + BATCH_SIZE < products.length) {
-        await new Promise(resolve => setTimeout(resolve, 2000))  // 2 seconds
+        await new Promise(resolve => setTimeout(resolve, 1000))
       }
     }
 
