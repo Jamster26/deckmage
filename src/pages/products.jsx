@@ -33,35 +33,46 @@ function Products() {
     fetchProducts(session.user.id)
   }
 
-  async function fetchProducts(userId) {
+async function fetchProducts(userId) {
+  console.log('fetchProducts called with userId:', userId)
   setLoading(true)
   
-  // First get the connected store
-  const { data: store } = await supabase
-    .from('connected_stores')
-    .select('id')
-    .eq('user_id', userId)
-    .single()
+  try {
+    // Look up in 'stores' table, not 'connected_stores'
+    const { data: store, error: storeError } = await supabase
+      .from('stores')  // ← Changed from 'connected_stores'
+      .select('id')
+      .eq('user_id', userId)
+      .single()
 
-  if (!store) {
-    setProducts([])
+    if (storeError) {
+      console.error('Store lookup error:', storeError)
+      setProducts([])
+      setLoading(false)
+      return
+    }
+
+    console.log('Found store:', store.id)
+
+    // Get products using store_id
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('store_id', store.id)
+      .order('title', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching products:', error)
+    } else {
+      console.log('Fetched products:', data.length)
+      console.log('Matched products:', data.filter(p => p.matched_card_name).length)
+      setProducts(data || [])
+    }
+  } catch (error) {
+    console.error('Error in fetchProducts:', error)
+  } finally {
     setLoading(false)
-    return
   }
-
-  // Then get products using store_id
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('store_id', store.id)  // ← Use store.id, not userId
-    .order('title', { ascending: true })
-
-  if (error) {
-    console.error('Error fetching products:', error)
-  } else {
-    setProducts(data || [])
-  }
-  setLoading(false)
 }
 
   function openMatchModal(product) {
