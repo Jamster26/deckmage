@@ -15,15 +15,24 @@ function normalizeCardName(name) {
 }
 
 function extractCardName(title) {
-  // Split by hyphen and take the first part
-  const parts = title.split('-')
+  let cleaned = title
   
-  if (parts.length > 1) {
-    return parts[0].trim()
-  }
+  // Remove set codes (e.g., "LOB-005", "SDK-001")
+  cleaned = cleaned.replace(/\s*-?\s*[A-Z]{2,5}-[A-Z]?\d{3,4}\s*/gi, '')
   
-  // Fallback: return the whole title
-  return title.trim()
+  // Remove conditions (including "Mint")
+  cleaned = cleaned.replace(/\s*-?\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|Mint|NM|LP|MP|HP|DMG)\s*/gi, '')
+  
+  // Remove editions
+  cleaned = cleaned.replace(/\s*-?\s*(1st Edition|Limited Edition|Unlimited|1st)\s*/gi, '')
+  
+  // Remove rarity (in order from longest to shortest to avoid partial matches)
+  cleaned = cleaned.replace(/\s*-?\s*(Starlight Rare|Ghost Rare|Ultimate Rare|Ultra Rare|Super Rare|Secret Rare|Prismatic Secret|Quarter Century|Collector's Rare|Rare|Common)\s*/gi, '')
+  
+  // Clean up: remove trailing " - " patterns
+  cleaned = cleaned.replace(/\s*-\s*$/g, '').trim()
+  
+  return cleaned
 }
 
 async function fetchCardData(cardName, productTitle) {
