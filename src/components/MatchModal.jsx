@@ -43,33 +43,46 @@ function MatchModal({ product, onClose, onSave }) {
     setSearching(false)
   }
 
-  async function handleSave() {
+async function handleSave() {
   if (!selectedCard) return
   
   setSaving(true)
   
   try {
-    console.log('Saving match...', selectedCard.name)
+    console.log('Saving match for product:', product.id)
+    console.log('Selected card:', selectedCard.name)
     
-    // Just update the product
-    const { error } = await supabase
+    // Update - use matched_card_id instead of card_id
+    const { data: updateData, error } = await supabase
       .from('products')
       .update({
         matched_card_name: selectedCard.name,
-        card_id: selectedCard.id.toString()
+        matched_card_id: selectedCard.id.toString()  // ← Changed from card_id
       })
       .eq('id', product.id)
+      .select()
+    
+    console.log('Update result:', { updateData, error })
     
     if (error) {
       console.error('Error saving match:', error)
-      alert('Failed to save match')
+      alert('Failed to save match: ' + error.message)
       setSaving(false)
       return
     }
     
+    // Verify the save
+    const { data: verified } = await supabase
+      .from('products')
+      .select('id, title, matched_card_name, matched_card_id')
+      .eq('id', product.id)
+      .single()
+    
+    console.log('Verified data after save:', verified)
+    
     console.log('Match saved successfully!')
     setSaving(false)
-    onSave()  // ← This should trigger now
+    onSave()
     
   } catch (error) {
     console.error('Error saving match:', error)
