@@ -49,33 +49,10 @@ function MatchModal({ product, onClose, onSave }) {
   setSaving(true)
   
   try {
-    // 1. Save/update card in cache
-    const { error: cardError } = await supabase
-      .from('cards')
-      .upsert({
-        id: selectedCard.id,
-        name: selectedCard.name,
-        type: selectedCard.type,
-        race: selectedCard.race,
-        atk: selectedCard.atk,
-        def: selectedCard.def,
-        level: selectedCard.level,
-        attribute: selectedCard.attribute,
-        description: selectedCard.desc,
-        image_url: selectedCard.card_images?.[0]?.image_url,
-        image_url_small: selectedCard.card_images?.[0]?.image_url_small,
-        card_data: selectedCard,
-        last_updated: new Date().toISOString()
-      }, {
-        onConflict: 'id'
-      })
+    console.log('Saving match...', selectedCard.name)
     
-    if (cardError) {
-      console.error('Error caching card:', cardError)
-    }
-    
-    // 2. Link product to card
-    const { error: productError } = await supabase
+    // Just update the product
+    const { error } = await supabase
       .from('products')
       .update({
         matched_card_name: selectedCard.name,
@@ -83,17 +60,22 @@ function MatchModal({ product, onClose, onSave }) {
       })
       .eq('id', product.id)
     
-    if (productError) {
-      throw productError
+    if (error) {
+      console.error('Error saving match:', error)
+      alert('Failed to save match')
+      setSaving(false)
+      return
     }
     
-    onSave()
+    console.log('Match saved successfully!')
+    setSaving(false)
+    onSave()  // ← This should trigger now
+    
   } catch (error) {
     console.error('Error saving match:', error)
     alert('Failed to save match')
+    setSaving(false)
   }
-  
-  setSaving(false)
 }
 
   async function handleUnmatch() {

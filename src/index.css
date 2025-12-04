@@ -25,3 +25,18 @@
   scrollbar-width: thin;
   scrollbar-color: #00ff9d #0a0a1f;
 }
+
+/* Override default focus outlines with green */
+*:focus-visible {
+  outline: 2px solid #00ff9d;
+  outline-offset: 2px;
+}
+
+/* Remove default input/button outlines and add green */
+input:focus,
+textarea:focus,
+select:focus,
+button:focus {
+  outline: 2px solid #00ff9d;
+  outline-offset: 2px;
+}
