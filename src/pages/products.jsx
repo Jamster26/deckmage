@@ -115,89 +115,93 @@ async function fetchProducts(userId) {
     )
   }
 
-   // ← Add this new function
-  async function handleMatchAll() {
-    const unmatchedProducts = products.filter(p => !p.matched_card_name)
-    
-    if (unmatchedProducts.length === 0) {
-      alert('All products are already matched!')
-      return
-    }
-
-    const confirmed = confirm(
-      `This will attempt to automatically match ${unmatchedProducts.length} unmatched products. Continue?`
-    )
-    
-    if (!confirmed) return
-
-    setAutoMatching(true)
-    setMatchProgress({ current: 0, total: unmatchedProducts.length })
-
-    let successCount = 0
-    let failCount = 0
-
-    for (let i = 0; i < unmatchedProducts.length; i++) {
-      const product = unmatchedProducts[i]
-      setMatchProgress({ current: i + 1, total: unmatchedProducts.length })
-
-      try {
-        // Extract card name from product title
-        const cardName = extractCardName(product.title)
-        
-        if (!cardName) {
-          failCount++
-          continue
-        }
-
-        // Search for the card
-        const results = await searchYGOCards(cardName)
-        
-        if (results.length === 0) {
-          failCount++
-          continue
-        }
-
-        // Take the first match (most relevant)
-        const matchedCard = results[0]
-
-        // Save the match
-        const { error } = await supabase
-          .from('products')
-          .update({
-            matched_card_name: matchedCard.name
-          })
-          .eq('id', product.id)
-
-        if (error) {
-          console.error('Error auto-matching:', error)
-          failCount++
-        } else {
-          successCount++
-        }
-
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 300))
-
-      } catch (error) {
-        console.error('Error processing product:', error)
-        failCount++
-      }
-    }
-
-    setAutoMatching(false)
-    setMatchProgress({ current: 0, total: 0 })
-
-    // Refresh products
-    await fetchProducts(user.id)
-
-    // Show results
-    alert(
-      `Auto-matching complete!\n\n` +
-      `✅ Successfully matched: ${successCount}\n` +
-      `❌ Failed to match: ${failCount}\n\n` +
-      `You can manually match the remaining products.`
-    )
+async function handleMatchAll() {
+  const unmatchedProducts = products.filter(p => !p.matched_card_name)
+  
+  if (unmatchedProducts.length === 0) {
+    alert('All products are already matched!')
+    return
   }
+
+  const confirmed = confirm(
+    `This will attempt to automatically match ${unmatchedProducts.length} unmatched products. Continue?`
+  )
+  
+  if (!confirmed) return
+
+  setAutoMatching(true)
+  setMatchProgress({ current: 0, total: unmatchedProducts.length })
+
+  let successCount = 0
+  let failCount = 0
+
+  for (let i = 0; i < unmatchedProducts.length; i++) {
+    const product = unmatchedProducts[i]
+    setMatchProgress({ current: i + 1, total: unmatchedProducts.length })
+
+    try {
+      // Extract card name from product title
+      const cardName = extractCardName(product.title)
+      
+      if (!cardName) {
+        failCount++
+        continue
+      }
+
+      // Search for the card
+      const results = await searchYGOCards(cardName)
+      
+      if (results.length === 0) {
+        failCount++
+        continue
+      }
+
+      // Find best match - prioritize exact name matches
+      const exactMatch = results.find(card => 
+        card.name.toLowerCase() === cardName.toLowerCase()
+      )
+      
+      const matchedCard = exactMatch || results[0]
+
+      // Save the match
+      const { error } = await supabase
+        .from('products')
+        .update({
+          matched_card_name: matchedCard.name,
+          matched_card_id: matchedCard.id.toString()
+        })
+        .eq('id', product.id)
+
+      if (error) {
+        console.error('Error auto-matching:', error)
+        failCount++
+      } else {
+        successCount++
+      }
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+    } catch (error) {
+      console.error('Error processing product:', error)
+      failCount++
+    }
+  }
+
+  setAutoMatching(false)
+  setMatchProgress({ current: 0, total: 0 })
+
+  // Refresh products
+  await fetchProducts(user.id)
+
+  // Show results
+  alert(
+    `Auto-matching complete!\n\n` +
+    `✅ Successfully matched: ${successCount}\n` +
+    `❌ Failed to match: ${failCount}\n\n` +
+    `You can manually review and adjust matches as needed.`
+  )
+}
 
   return (
     <div style={{
