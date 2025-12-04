@@ -23,7 +23,7 @@ function ShopifyCallback() {
 
         setStatus('Exchanging authorization code...')
 
-        // Exchange code for access token
+        // Exchange code for the access token
         const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
           method: 'POST',
           headers: {
