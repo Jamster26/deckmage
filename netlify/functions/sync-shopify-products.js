@@ -1,11 +1,17 @@
 const { createClient } = require('@supabase/supabase-js')
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
+// Check for environment variables
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-// Add the normalize helper function
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ Missing environment variables!')
+  console.error('VITE_SUPABASE_URL:', supabaseUrl ? 'Found' : 'Missing')
+  console.error('SUPABASE_SERVICE_ROLE_KEY:', supabaseKey ? 'Found' : 'Missing')
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey)
+
 function normalizeCardName(name) {
   if (!name) return ''
   return name
@@ -18,19 +24,19 @@ function extractCardName(title) {
   let cleaned = title
   
   // Remove set codes (e.g., "LOB-005", "SDK-001")
-  cleaned = cleaned.replace(/\s*-?\s*[A-Z]{2,5}-[A-Z]?\d{3,4}\s*/gi, '')
+  cleaned = cleaned.replace(/\s*[A-Z]{2,5}-[A-Z]?\d{3,4}\s*/gi, '')
   
   // Remove conditions (including "Mint")
-  cleaned = cleaned.replace(/\s*-?\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|Mint|NM|LP|MP|HP|DMG)\s*/gi, '')
+  cleaned = cleaned.replace(/\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|Mint|NM|LP|MP|HP|DMG)\s*/gi, '')
   
   // Remove editions
-  cleaned = cleaned.replace(/\s*-?\s*(1st Edition|Limited Edition|Unlimited|1st)\s*/gi, '')
+  cleaned = cleaned.replace(/\s*(1st Edition|Limited Edition|Unlimited|1st)\s*/gi, '')
   
-  // Remove rarity (in order from longest to shortest to avoid partial matches)
-  cleaned = cleaned.replace(/\s*-?\s*(Starlight Rare|Ghost Rare|Ultimate Rare|Ultra Rare|Super Rare|Secret Rare|Prismatic Secret|Quarter Century|Collector's Rare|Rare|Common)\s*/gi, '')
+  // Remove rarity (in order from longest to shortest)
+  cleaned = cleaned.replace(/\s*(Starlight Rare|Ghost Rare|Ultimate Rare|Ultra Rare|Super Rare|Secret Rare|Prismatic Secret|Quarter Century|Collector's Rare|Rare|Common)\s*/gi, '')
   
-  // Clean up: remove trailing " - " patterns
-  cleaned = cleaned.replace(/\s*-\s*$/g, '').trim()
+  // Remove trailing/leading " - " patterns (but NOT hyphens within the name!)
+  cleaned = cleaned.replace(/^\s*-\s*|\s*-\s*$/g, '').trim()
   
   return cleaned
 }
@@ -83,6 +89,10 @@ async function fetchCardData(cardName, productTitle) {
 }
 
 exports.handler = async (event) => {
+  console.log('\n========================================')
+  console.log('🚀 SYNC FUNCTION STARTED')
+  console.log('========================================\n')
+  
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -96,6 +106,8 @@ exports.handler = async (event) => {
     if (!storeId || !accessToken || !shopDomain) {
       throw new Error('Missing required parameters')
     }
+
+    console.log(`📦 Fetching products from Shopify: ${shopDomain}`)
 
     // Fetch products from Shopify
     const shopifyResponse = await fetch(
@@ -116,66 +128,75 @@ exports.handler = async (event) => {
     const shopifyData = await shopifyResponse.json()
     const products = shopifyData.products || []
 
-    console.log(`📦 Syncing ${products.length} products...`)
+    console.log(`📦 Processing ${products.length} products...\n`)
 
     // Save products to Supabase
     const productsToInsert = await Promise.all(
       products.map(async (product) => {
-const matchedCardName = extractCardName(product.title)
+        console.log(`\n====================================`)
+        console.log(`📦 Product: "${product.title}"`)
+        
+        const matchedCardName = extractCardName(product.title)
+        console.log(`📝 Extracted: "${matchedCardName}"`)
 
-// Check if product has Shopify images
-let productImages = product.images
-let finalCardName = matchedCardName
+        // Check if product has Shopify images
+        let productImages = product.images
+        let finalCardName = matchedCardName
 
-// Only fetch from YGOProDeck if NO Shopify image exists
-if (!productImages || productImages.length === 0) {
-  console.log(`🔍 No Shopify image for "${product.title}"`)
-  
-  // Check if we already have this product in the database with an image
-  const { data: existingProduct } = await supabase
-    .from('products')
-    .select('images, matched_card_name')
-    .eq('store_id', storeId)
-    .eq('shopify_product_id', product.id.toString())
-    .single()
-  
-  if (existingProduct?.images && existingProduct.images.length > 0) {
-    // Use existing image from database (don't fetch again)
-    productImages = existingProduct.images
-    finalCardName = existingProduct.matched_card_name
-    console.log(`✅ Using existing database image for "${product.title}"`)
-  } else {
-    // Fetch from YGOProDeck (first time only)
-    console.log(`🌐 Fetching from YGOProDeck...`)
-    const cardData = await fetchCardData(matchedCardName, product.title)
-    finalCardName = cardData?.officialName || matchedCardName
-    
-    if (cardData?.image) {
-      productImages = [{ src: cardData.image }]
-      console.log(`✅ Added YGOProDeck image for "${finalCardName}"`)
-    }
-  }
-} else {
-  // Has Shopify image - just get official name
-  console.log(`✅ Using Shopify image for "${product.title}"`)
-  const cardData = await fetchCardData(matchedCardName, product.title)
-  finalCardName = cardData?.officialName || matchedCardName
-}
+        // Only fetch from YGOProDeck if NO Shopify image exists
+        if (!productImages || productImages.length === 0) {
+          console.log(`🔍 No Shopify image`)
+          
+          // Check if we already have this product in the database with an image
+          const { data: existingProduct } = await supabase
+            .from('products')
+            .select('images, matched_card_name')
+            .eq('store_id', storeId)
+            .eq('shopify_product_id', product.id.toString())
+            .single()
+          
+          if (existingProduct?.images && existingProduct.images.length > 0) {
+            // Use existing image from database (don't fetch again)
+            productImages = existingProduct.images
+            finalCardName = existingProduct.matched_card_name
+            console.log(`✅ Using existing database image`)
+          } else {
+            // Fetch from YGOProDeck (first time only)
+            const cardData = await fetchCardData(matchedCardName, product.title)
+            finalCardName = cardData?.officialName || matchedCardName
+            
+            if (cardData?.image) {
+              productImages = [{ src: cardData.image }]
+              console.log(`✅ Added YGOProDeck image`)
+            }
+          }
+        } else {
+          // Has Shopify image - just get official name
+          console.log(`✅ Has Shopify image`)
+          const cardData = await fetchCardData(matchedCardName, product.title)
+          finalCardName = cardData?.officialName || matchedCardName
+        }
 
-return {
-  store_id: storeId,
-  shopify_product_id: product.id.toString(),
-  title: product.title,
-  vendor: product.vendor,
-  product_type: product.product_type,
-  variants: product.variants,
-  images: productImages,
-  matched_card_name: finalCardName,
-  normalized_card_name: normalizeCardName(finalCardName),
-  updated_at: new Date().toISOString()
-}
+        console.log(`📝 Final card name: "${finalCardName}"`)
+        console.log(`📝 Normalized: "${normalizeCardName(finalCardName)}"`)
+        console.log(`====================================\n`)
+
+        return {
+          store_id: storeId,
+          shopify_product_id: product.id.toString(),
+          title: product.title,
+          vendor: product.vendor,
+          product_type: product.product_type,
+          variants: product.variants,
+          images: productImages,
+          matched_card_name: finalCardName,
+          normalized_card_name: normalizeCardName(finalCardName),
+          updated_at: new Date().toISOString()
+        }
       })
     )
+
+    console.log(`\n💾 Saving to database...`)
 
     // Delete old products for this store
     await supabase
@@ -192,7 +213,7 @@ return {
       throw new Error(`Database error: ${insertError.message}`)
     }
 
-    console.log(`✅ Successfully synced ${products.length} products`)
+    console.log(`✅ Successfully synced ${products.length} products\n`)
 
     return {
       statusCode: 200,
@@ -206,7 +227,7 @@ return {
     }
 
   } catch (error) {
-    console.error('Sync products error:', error)
+    console.error('❌ Sync products error:', error)
     return {
       statusCode: 500,
       body: JSON.stringify({ error: error.message })
