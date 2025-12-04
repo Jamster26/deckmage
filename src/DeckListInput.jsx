@@ -48,27 +48,133 @@ function DeckListInput({ theme, layout, primaryColor, size }) {
     }
   }, [searchResults, selectedVersions]) // Re-run when results or selections change
 
- const handleParse = async () => {
+const handleParse = async () => {
   const lines = deckList.split('\n').filter(line => line.trim() !== '')
   
   const parsedCards = lines.map(line => {
-  const match = line.match(/^(\d+)?\s*[x×]?\s*(.+)$/i)
-  
-  if (match) {
-    const quantity = match[1] ? parseInt(match[1]) : 1
-    let cardName = match[2].trim()
+    const match = line.match(/^(\d+)?\s*[x×]?\s*(.+)$/i)
     
-    // 👇 Convert ALL fancy apostrophes → straight apostrophe
-    cardName = cardName.replace(/[\u2018\u2019\u201A\u201B\u2032\u2035''`´]/g, "'")
-    
-    return { quantity, cardName }
-  }
-  return null
-}).filter(card => card !== null)
+    if (match) {
+      const quantity = match[1] ? parseInt(match[1]) : 1
+      let cardName = match[2].trim()
+      
+      // Convert fancy apostrophes → straight apostrophe
+      cardName = cardName.replace(/[\u2018\u2019\u201A\u201B\u2032\u2035''`´]/g, "'")
+      
+      return { quantity, cardName }
+    }
+    return null
+  }).filter(card => card !== null)
   
   console.log('Parsed cards:', parsedCards)
   
   setLoading(true)
+  
+  // Get shop ID from URL
+  const urlParams = new URLSearchParams(window.location.search)
+  const shopId = urlParams.get('shop')
+  const isDemo = urlParams.get('demo') === 'true'
+  
+  if (isDemo || !shopId) {
+    // Demo mode - use YGOProDeck (your existing code)
+    await handleDemoMode(parsedCards)
+  } else {
+    // Real shop mode - use your API
+    await handleRealShopMode(parsedCards, shopId)
+  }
+  
+  setLoading(false)
+}
+
+// NEW: Real shop inventory lookup
+async function handleRealShopMode(parsedCards, shopId) {
+  const cardNames = parsedCards.map(c => c.cardName)
+  
+  try {
+    // Call YOUR API
+    const response = await fetch('/.netlify/functions/search-inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shopId: shopId,
+        cardNames: cardNames
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (!data.success) {
+      alert('Error searching shop inventory: ' + data.error)
+      return
+    }
+    
+    // Map results to deck builder format
+    const results = []
+    const notFound = []
+    
+    parsedCards.forEach(card => {
+      const shopProducts = data.results[card.cardName]
+      
+      if (shopProducts && shopProducts.length > 0) {
+        // Card found in shop inventory
+        results.push({
+          quantity: card.quantity,
+          cardName: card.cardName,
+          shopProducts: shopProducts,
+          cardData: {
+            name: card.cardName,
+            card_images: shopProducts[0].image ? [{ image_url: shopProducts[0].image }] : [],
+            card_sets: shopProducts.map(p => ({
+              set_name: `${p.setCode || 'Unknown'} - ${p.rarity || 'Unknown'} - ${p.condition}`,
+              set_code: p.setCode,
+              set_rarity: p.rarity,
+              set_price: p.price.toString(),
+              productId: p.productId,
+              variantId: p.variantId,
+              available: p.available,
+              inventoryQuantity: p.inventoryQuantity
+            }))
+          }
+        })
+      } else {
+        notFound.push(card.cardName)
+      }
+    })
+    
+    console.log(`Found ${results.length}/${parsedCards.length} cards in shop inventory`)
+    if (notFound.length > 0) {
+      console.warn('Cards not in inventory:', notFound)
+      alert(`⚠️ ${notFound.length} cards not found in shop inventory:\n\n${notFound.join('\n')}\n\nThese cards are not available at this shop.`)
+    }
+    
+    setSearchResults(results)
+    
+    // Auto-select cheapest version
+    const autoSelected = {}
+    results.forEach((result, index) => {
+      if (result.cardData.card_sets && result.cardData.card_sets.length > 0) {
+        const cheapest = result.cardData.card_sets.reduce((min, set) => {
+          const price = parseFloat(set.set_price) || 0
+          const minPrice = parseFloat(min.set_price) || 0
+          
+          if (price === 0) return min
+          if (minPrice === 0) return set
+          
+          return price < minPrice ? set : min
+        })
+        autoSelected[index] = cheapest
+      }
+    })
+    setSelectedVersions(autoSelected)
+    
+  } catch (error) {
+    console.error('Error fetching shop inventory:', error)
+    alert('Failed to search shop inventory. Please try again.')
+  }
+}
+
+// Demo mode - YGOProDeck search (your existing logic)
+async function handleDemoMode(parsedCards) {
   const results = []
   const notFound = []
   
@@ -76,19 +182,17 @@ function DeckListInput({ theme, layout, primaryColor, size }) {
     try {
       let cardData = null
       
-    // CREATE SEARCH VARIATIONS (prioritize straight apostrophe!)
-const searchVariations = [
-  card.cardName,                                    // Original (whatever user typed)
-  card.cardName.replace(/[''`´]/g, "'"),           // Convert ALL apostrophes → straight '
-  card.cardName.replace(/['']/g, "'"),             // Fix curly ' → straight '
-  card.cardName.replace(/['']/g, "'"),             // Fix curly ' → straight '
-  `The ${card.cardName}`,                           // Add "The"
-  `The ${card.cardName.replace(/[''`´]/g, "'")}`,  // "The" + straight apostrophe
-]
+      const searchVariations = [
+        card.cardName,
+        card.cardName.replace(/[''`´]/g, "'"),
+        card.cardName.replace(/['']/g, "'"),
+        card.cardName.replace(/['']/g, "'"),
+        `The ${card.cardName}`,
+        `The ${card.cardName.replace(/[''`´]/g, "'")}`
+      ]
       
-      // TRY EXACT MATCH with all variations
       for (const variation of searchVariations) {
-        if (cardData) break // Already found, stop searching
+        if (cardData) break
         
         try {
           const response = await fetch(
@@ -102,12 +206,10 @@ const searchVariations = [
             break
           }
         } catch (err) {
-          // This variation didn't work, try next
           continue
         }
       }
       
-      // TRY FUZZY as last resort
       if (!cardData) {
         try {
           const fuzzyResponse = await fetch(
@@ -124,7 +226,6 @@ const searchVariations = [
         }
       }
       
-      // Add to results or mark as not found
       if (cardData) {
         results.push({
           ...card,
@@ -148,7 +249,6 @@ const searchVariations = [
   
   setSearchResults(results)
 
-  // Auto-select cheapest version for each card (ignore $0 prices)
   const autoSelected = {}
   results.forEach((result, index) => {
     if (result.cardData.card_sets && result.cardData.card_sets.length > 0) {
@@ -165,10 +265,6 @@ const searchVariations = [
     }
   })
   setSelectedVersions(autoSelected)
-
-  setLoading(false)
-  console.log('Search results:', results)
-  console.log('Auto-selected versions:', autoSelected)
 }
 
   const selectVersion = (resultIndex, set) => {
