@@ -17,6 +17,22 @@ function MatchModal({ product, onClose, onSave }) {
       handleSearch(suggestedName)
     }
   }, [product.title])
+  
+  // ESC key listener
+  useEffect(() => {
+    function handleEscKey(event) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    document.addEventListener('keydown', handleEscKey)
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleEscKey)
+    }
+  }, [onClose])
 
   async function handleSearch(query = searchQuery) {
     if (!query.trim()) return

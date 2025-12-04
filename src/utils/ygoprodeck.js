@@ -99,22 +99,24 @@ export async function getYGOCard(name) {
 export function extractCardName(productTitle) {
   if (!productTitle) return ''
   
-  // Remove common suffixes
   let cleaned = productTitle
-    // Remove set codes (e.g., "LOB-001", "SDK-001")
-    .replace(/[A-Z]{2,5}-[A-Z]?\d{3}/gi, '')
+    // Remove set codes (e.g., "LOB-001", "SDK-001") - but keep card name hyphens
+    .replace(/\b[A-Z]{2,5}-[A-Z]?\d{3}\b/gi, '')
     // Remove editions
     .replace(/\b(1st Edition|Unlimited|Limited)\b/gi, '')
     // Remove rarities
     .replace(/\b(Ultra Rare|Super Rare|Secret Rare|Common|Rare|Starlight|Ghost)\b/gi, '')
     // Remove conditions
     .replace(/\b(Near Mint|NM|Lightly Played|LP|Moderately Played|MP|Heavily Played|HP|Damaged)\b/gi, '')
-    // Remove extra dashes and whitespace
-    .replace(/\s*-\s*/g, ' ')
     .trim()
   
-  // Take everything before the first dash (if remaining)
-  const firstPart = cleaned.split('-')[0].trim()
+  // Clean up extra spaces and dashes, but preserve hyphens in card names
+  cleaned = cleaned
+    .replace(/\s{2,}/g, ' ')  // Multiple spaces → single space
+    .replace(/\s*-\s*-\s*/g, ' ')  // Multiple dashes → remove
+    .replace(/^\s*-\s*/, '')  // Leading dash
+    .replace(/\s*-\s*$/, '')  // Trailing dash
+    .trim()
   
-  return firstPart || cleaned
+  return cleaned
 }
