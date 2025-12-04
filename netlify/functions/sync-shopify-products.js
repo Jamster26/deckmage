@@ -12,6 +12,30 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+function fixCommonCardNameVariants(name) {
+  const fixes = {
+    'blue eyes white dragon': 'Blue-Eyes White Dragon',
+    'blue eyes black dragon': 'Blue-Eyes Black Dragon', 
+    'red eyes black dragon': 'Red-Eyes Black Dragon',
+    'red eyes b dragon': 'Red-Eyes B. Dragon',
+    'red eyes b. dragon': 'Red-Eyes B. Dragon',
+    'dark magician girl': 'Dark Magician Girl',
+    'blue eyes ultimate dragon': 'Blue-Eyes Ultimate Dragon',
+    'red eyes darkness metal dragon': 'Red-Eyes Darkness Metal Dragon',
+    'cyber end dragon': 'Cyber End Dragon',
+    'cyber twin dragon': 'Cyber Twin Dragon'
+  };
+  
+  const normalized = name.toLowerCase().trim();
+  
+  if (fixes[normalized]) {
+    console.log(`✏️  Auto-corrected: "${name}" → "${fixes[normalized]}"`);
+    return fixes[normalized];
+  }
+  
+  return name;
+}
+
 function extractCardName(title) {
   let cleaned = title
   
@@ -30,8 +54,8 @@ function extractCardName(title) {
   // Clean up extra spaces and trim
   cleaned = cleaned.replace(/\s+/g, ' ').trim()
   
-  // IMPORTANT: Do NOT remove hyphens from card names!
-  // "Blue-Eyes White Dragon" should stay "Blue-Eyes White Dragon"
+  // Fix common name variants
+  cleaned = fixCommonCardNameVariants(cleaned)
   
   return cleaned
 }
@@ -40,10 +64,10 @@ const normalizeCardName = (str) => {
   if (!str) return '';
   return str
     .toLowerCase()
-    .replace(/[''"]/g, '')           // smart quotes & apostrophes
-    .replace(/[-–—∙•·]/g, ' ')       // all dash-like characters → space
-    .replace(/[^\w\s]/g, '')         // remove remaining punctuation
-    .replace(/\s+/g, ' ')            // collapse whitespace
+    .replace(/[''"]/g, '')
+    .replace(/[-–—∙•·]/g, ' ')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 };
 
@@ -55,6 +79,13 @@ async function fetchCardData(cardName, productTitle = '') {
 
   console.log(`\n🔍 Searching for: "${originalName}" → normalized: "${normalizedInput}"`);
 
+  const extractCard = (card) => ({
+    officialName: card.name,
+    image: card.card_images?.[0]?.image_url || card.card_images?.[0]?.image_url_cropped || null,
+    type: card.type,
+    id: card.id
+  });
+
   try {
     // Step 1: Try exact API match
     let res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(originalName)}`);
@@ -65,30 +96,34 @@ async function fetchCardData(cardName, productTitle = '') {
       return extractCard(json.data[0]);
     }
 
-    // 🧪 ADD THIS DEBUG BLOCK:
+    // Step 2: Fuzzy search
     console.log(`⚠️ No exact match, trying fuzzy...`);
     console.log(`   Original: "${originalName}"`);
     
-    // Step 2: Fuzzy search with fname
     const searchWords = originalName.split(/\s+/).slice(0, 4);
     const fuzzyQuery = searchWords.join(' ');
     
     console.log(`   Fuzzy query: "${fuzzyQuery}"`);
 
-    res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(fuzzyQuery)}&num=50&offset=0`);
+    const fuzzyUrl = `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(fuzzyQuery)}&num=50&offset=0`;
+    
+    res = await fetch(fuzzyUrl);
     json = await res.json();
 
-    console.log(`   API returned: ${json.data?.length || 0} results`);
-    
+    console.log(`   API Response:`, json.error ? `ERROR: ${json.error}` : `${json.data?.length || 0} cards found`);
+
+    if (json.error) {
+      console.log(`❌ YGOProDeck error: ${json.error}`);
+    }
+
     if (!json.data?.length) {
-      console.log(`❌ YGOProDeck found NOTHING for "${fuzzyQuery}"`);
+      console.log(`❌ No results for "${fuzzyQuery}"`);
       return null;
     }
 
-    // Show top 3 results
-    console.log(`   Top 3 from YGOProDeck:`);
+    console.log(`   Top 3 results:`);
     json.data.slice(0, 3).forEach((card, i) => {
-      console.log(`      ${i+1}. "${card.name}"`);
+      console.log(`      ${i + 1}. "${card.name}"`);
     });
 
     const candidates = json.data;
@@ -114,8 +149,6 @@ async function fetchCardData(cardName, productTitle = '') {
 
     const best = scored[0];
     
-    console.log(`   Best match: "${best.card.name}" (score: ${best.score})`);
-    
     if (best.score >= 80) {
       console.log(`✅ Strong match (${best.score}): "${best.card.name}"`);
       return extractCard(best.card);
@@ -137,7 +170,7 @@ async function fetchCardDataCached(cardName, productTitle, cache) {
   const key = normalizeCardName(cardName);
   
   if (cache.has(key)) {
-    console.log(`   ♻️  Using cached result`);
+    console.log(`   ♻️  Using cached result from this sync`);
     return cache.get(key);
   }
   
@@ -192,7 +225,7 @@ export const handler = async (event) => {
 
     const cardCache = new Map()
     const productsToInsert = []
-    const BATCH_SIZE = 10
+    const BATCH_SIZE = 5  // Slower batches for development
 
     for (let i = 0; i < products.length; i += BATCH_SIZE) {
       const batch = products.slice(i, i + BATCH_SIZE)
@@ -210,21 +243,26 @@ export const handler = async (event) => {
           let productImages = product.images
           let finalCardName = matchedCardName
 
+          // ✅ NEW: Check database cache FIRST before hitting API
+          const { data: existingProduct } = await supabase
+            .from('products')
+            .select('images, matched_card_name')
+            .eq('store_id', storeId)
+            .eq('shopify_product_id', product.id.toString())
+            .single()
+
           if (!productImages || productImages.length === 0) {
             console.log(`🔍 No Shopify image`)
             
-            const { data: existingProduct } = await supabase
-              .from('products')
-              .select('images, matched_card_name')
-              .eq('store_id', storeId)
-              .eq('shopify_product_id', product.id.toString())
-              .single()
-            
+            // ✅ PRIORITY 1: Use existing database image if available
             if (existingProduct?.images && existingProduct.images.length > 0) {
               productImages = existingProduct.images
               finalCardName = existingProduct.matched_card_name
-              console.log(`✅ Using existing database image`)
-            } else {
+              console.log(`♻️  Using cached image from database (avoiding API call)`)
+            } 
+            // ⚠️ ONLY fetch from API if no cache exists
+            else {
+              console.log(`🌐 No cache found, fetching from YGOProDeck...`)
               const cardData = await fetchCardDataCached(matchedCardName, product.title, cardCache)
               
               finalCardName = cardData?.officialName || matchedCardName
@@ -232,12 +270,21 @@ export const handler = async (event) => {
               if (cardData?.image) {
                 productImages = [{ src: cardData.image }]
                 console.log(`✅ Added YGOProDeck image`)
+              } else {
+                console.log(`⚠️  No image found from YGOProDeck`)
               }
             }
           } else {
             console.log(`✅ Has Shopify image`)
-            const cardData = await fetchCardDataCached(matchedCardName, product.title, cardCache)
-            finalCardName = cardData?.officialName || matchedCardName
+            
+            // Still update card name if we have cached data
+            if (existingProduct?.matched_card_name) {
+              finalCardName = existingProduct.matched_card_name
+              console.log(`♻️  Using cached card name from database`)
+            } else {
+              const cardData = await fetchCardDataCached(matchedCardName, product.title, cardCache)
+              finalCardName = cardData?.officialName || matchedCardName
+            }
           }
 
           console.log(`📝 Final card name: "${finalCardName}"`)
@@ -263,9 +310,9 @@ export const handler = async (event) => {
       
       console.log(`✅ Completed batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(products.length/BATCH_SIZE)}`)
       
-      // Small delay between batches to avoid rate limits
+      // Longer delay for development (less rate limit issues)
       if (i + BATCH_SIZE < products.length) {
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await new Promise(resolve => setTimeout(resolve, 2000))  // 2 seconds
       }
     }
 
