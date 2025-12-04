@@ -70,7 +70,7 @@ function ShopifyCallback() {
         // Clean up
         sessionStorage.removeItem('shopify_oauth_state')
 
-        // Redirect to dashboard
+        // Redirect to THE dashboard
         setTimeout(() => {
           navigate('/dashboard')
         }, 2000)
