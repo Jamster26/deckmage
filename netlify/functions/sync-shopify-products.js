@@ -165,12 +165,26 @@ export const handler = async (event) => {
       throw new Error('Missing required parameters')
     }
 
-    console.log(`📦 Fetching products from Shopify: ${shopDomain}`)
+console.log(`📦 Fetching products from Shopify: ${shopDomain}`)
 
-    // ... Shopify fetch code ...
+// Fetch all products from Shopify
+const shopifyResponse = await fetch(
+  `https://${shopDomain}/admin/api/2024-01/products.json?limit=250`,
+  {
+    method: 'GET',
+    headers: {
+      'X-Shopify-Access-Token': accessToken,
+      'Content-Type': 'application/json'
+    }
+  }
+)
 
-    const shopifyData = await shopifyResponse.json()
-    const products = shopifyData.products || []
+if (!shopifyResponse.ok) {
+  throw new Error(`Shopify API error: ${shopifyResponse.status} ${shopifyResponse.statusText}`)
+}
+
+const shopifyData = await shopifyResponse.json()
+const products = shopifyData.products || []
 
     console.log(`📦 Processing ${products.length} products...\n`)
 
