@@ -86,7 +86,7 @@ const handleParse = async () => {
   setLoading(false)
 }
 
-// NEW: Real shop inventory lookup
+// Update handleRealShopMode in DeckListInput.jsx
 async function handleRealShopMode(parsedCards, shopId) {
   const cardNames = parsedCards.map(c => c.cardName)
   
@@ -112,10 +112,28 @@ async function handleRealShopMode(parsedCards, shopId) {
     const results = []
     const notFound = []
     
-    parsedCards.forEach(card => {
+    // NEW: Fetch card images from YGOProDeck in parallel
+    for (const card of parsedCards) {
       const shopProducts = data.results[card.cardName]
       
       if (shopProducts && shopProducts.length > 0) {
+        // Try to get card image from YGOProDeck API
+        let cardImage = 'https://images.ygoprodeck.com/images/cards/back.jpg' // fallback
+        
+        try {
+          const ygoproResponse = await fetch(
+            `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(card.cardName)}`
+          )
+          const ygoproData = await ygoproResponse.json()
+          
+          if (ygoproData.data && ygoproData.data[0]?.card_images?.[0]?.image_url) {
+            cardImage = ygoproData.data[0].card_images[0].image_url
+            console.log(`✅ Got image for ${card.cardName} from YGOProDeck`)
+          }
+        } catch (err) {
+          console.warn(`⚠️ Could not fetch image for ${card.cardName}:`, err)
+        }
+        
         // Card found in shop inventory
         results.push({
           quantity: card.quantity,
@@ -123,10 +141,7 @@ async function handleRealShopMode(parsedCards, shopId) {
           shopProducts: shopProducts,
           cardData: {
             name: card.cardName,
-            // FIX: Handle missing images properly
-            card_images: shopProducts[0]?.image 
-              ? [{ image_url: shopProducts[0].image }] 
-              : [{ image_url: 'https://images.ygoprodeck.com/images/cards/back.jpg' }], // Fallback image
+            card_images: [{ image_url: cardImage }],
             card_sets: shopProducts.map(p => ({
               set_name: `${p.setCode || 'Unknown'} - ${p.rarity || 'Unknown'} - ${p.condition || 'Near Mint'}`,
               set_code: p.setCode || 'N/A',
@@ -142,7 +157,7 @@ async function handleRealShopMode(parsedCards, shopId) {
       } else {
         notFound.push(card.cardName)
       }
-    })
+    }
     
     console.log(`Found ${results.length}/${parsedCards.length} cards in shop inventory`)
     if (notFound.length > 0) {
