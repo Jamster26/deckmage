@@ -1,4 +1,6 @@
-const { createClient } = require('@supabase/supabase-js')
+import { createClient } from '@supabase/supabase-js'
+import pLimit from 'p-limit'  // ADD THIS LINE
+
 
 // Check for environment variables
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
@@ -12,13 +14,7 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-function normalizeCardName(name) {
-  if (!name) return ''
-  return name
-    .toLowerCase()
-    .replace(/[\s-]/g, '') // Remove spaces and hyphens
-    .replace(/[^a-z0-9]/g, '') // Remove special characters
-}
+
 
 function extractCardName(title) {
   let cleaned = title
@@ -27,68 +23,130 @@ function extractCardName(title) {
   cleaned = cleaned.replace(/\s*[A-Z]{2,5}-[A-Z]?\d{3,4}\s*/gi, '')
   
   // Remove conditions (including "Mint")
-  cleaned = cleaned.replace(/\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|Mint|NM|LP|MP|HP|DMG)\s*/gi, '')
+  cleaned = cleaned.replace(/\s*-?\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|Mint|NM|LP|MP|HP|DMG)\s*/gi, '')
   
   // Remove editions
-  cleaned = cleaned.replace(/\s*(1st Edition|Limited Edition|Unlimited|1st)\s*/gi, '')
+  cleaned = cleaned.replace(/\s*-?\s*(1st Edition|Limited Edition|Unlimited|1st)\s*/gi, '')
   
   // Remove rarity (in order from longest to shortest)
-  cleaned = cleaned.replace(/\s*(Starlight Rare|Ghost Rare|Ultimate Rare|Ultra Rare|Super Rare|Secret Rare|Prismatic Secret|Quarter Century|Collector's Rare|Rare|Common)\s*/gi, '')
+  cleaned = cleaned.replace(/\s*-?\s*(Starlight Rare|Ghost Rare|Ultimate Rare|Ultra Rare|Super Rare|Secret Rare|Prismatic Secret|Quarter Century|Collector's Rare|Rare|Common)\s*/gi, '')
   
-  // Remove trailing/leading " - " patterns (but NOT hyphens within the name!)
+  // Remove any trailing/leading dashes and spaces
   cleaned = cleaned.replace(/^\s*-\s*|\s*-\s*$/g, '').trim()
+  
+  // Clean up multiple spaces
+  cleaned = cleaned.replace(/\s+/g, ' ')
   
   return cleaned
 }
 
-async function fetchCardData(cardName, productTitle) {
-  if (!cardName) return null
-  
-  console.log(`\n🔍 FETCH CARD DATA START`)
-  console.log(`   Input cardName: "${cardName}"`)
-  console.log(`   Input productTitle: "${productTitle}"`)
-  
+const normalizeCardName = (str) => {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/[’'"]/g, '')           // smart quotes & apostrophes
+    .replace(/[-–—∙•·]/g, ' ')       // all dash-like characters → space
+    .replace(/[^\w\s]/g, '')         // remove remaining punctuation
+    .replace(/\s+/g, ' ')            // collapse whitespace
+    .trim();
+};
+
+async function fetchCardData(cardName, productTitle = '') {
+  if (!cardName?.trim()) return null;
+
+  const originalName = cardName.trim();
+  const normalizedInput = normalizeCardName(originalName);
+
+  console.log(`\n🔍 Searching for: "${originalName}" → normalized: "${normalizedInput}"`);
+
+  // Helper to extract result
+  const extractCard = (card) => ({
+    officialName: card.name,
+    image: card.card_images?.[0]?.image_url || card.card_images?.[0]?.image_url_cropped || null,
+    type: card.type,
+    id: card.id
+  });
+
   try {
-    // Try exact match first
-    console.log(`   🌐 Trying exact match...`)
-    let response = await fetch(
-      `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(cardName)}`
-    )
-    let data = await response.json()
-    
-    if (data.error) {
-      console.log(`   ❌ Exact match failed: ${data.error}`)
-      console.log(`   🌐 Trying fuzzy search...`)
-      
-      // Try fuzzy search
-      response = await fetch(
-        `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(cardName)}`
-      )
-      data = await response.json()
+    // Step 1: Try exact API match (handles official names perfectly)
+    let res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(originalName)}`);
+    let json = await res.json();
+
+    if (!json.error && json.data?.[0]) {
+      console.log(`✅ Exact match: "${json.data[0].name}"`);
+      return extractCard(json.data[0]);
     }
+
+    // Step 2: Fuzzy search with fname (their "fuzzy" endpoint)
+    const searchWords = originalName.split(/\s+/).slice(0, 4); // more flexible than fixed 3
+    const fuzzyQuery = searchWords.join(' ');
+
+    res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(fuzzyQuery)}&num=50&offset=0`);
+    json = await res.json();
+
+    if (!json.data?.length) {
+      console.log(`❌ No results even with fuzzy search`);
+      return null;
+    }
+
+    const candidates = json.data;
+
+    // Step 3: Score candidates by normalized name match quality
+    const scored = candidates
+      .map(card => {
+        const norm = normalizeCardName(card.name);
+        const exact = norm === normalizedInput;
+        const includes = norm.includes(normalizedInput);
+        const startsWith = norm.startsWith(normalizedInput.split(' ')[0]);
+        const wordMatchRatio = normalizedInput.split(' ').filter(w => norm.includes(w)).length;
+
+        return {
+          card,
+          score: exact ? 100 : 
+                 includes ? 80 + wordMatchRatio * 5 :
+                 startsWith ? 50 + wordMatchRatio * 3 : 
+                 wordMatchRatio * 10
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const best = scored[0];
     
-    if (data.data && data.data[0]) {
-      const card = data.data[0]
-      console.log(`   ✅ FOUND: "${card.name}"`)
-      console.log(`   🖼️  Image: ${card.card_images?.[0]?.image_url}`)
-      console.log(`🔍 FETCH CARD DATA END\n`)
-      return {
-        officialName: card.name,
-        image: card.card_images?.[0]?.image_url || null
-      }
+    if (best.score >= 80) {
+      console.log(`✅ Strong match (${best.score}): "${best.card.name}"`);
+      return extractCard(best.card);
+    } else if (best.score >= 50) {
+      console.log(`⚠️  Weak match (${best.score}): "${best.card.name}" (from "${originalName}")`);
+      return extractCard(best.card); // still return, but you could warn user
     } else {
-      console.log(`   ❌ No results found`)
-      console.log(`🔍 FETCH CARD DATA END\n`)
+      console.log(`❌ Best weak candidate: "${best.card.name}" (score: ${best.score}) — rejecting`);
+      console.log(`   Top 3: ${scored.slice(0,3).map(s => `"${s.card.name}"`).join(', ')}`);
+      return null;
     }
-  } catch (error) {
-    console.warn(`   ⚠️ Error: ${error.message}`)
-    console.log(`🔍 FETCH CARD DATA END\n`)
+
+  } catch (err) {
+    console.error('API error:', err.message);
+    return null;
   }
-  
-  return null
 }
 
-exports.handler = async (event) => {
+// ADD THIS NEW FUNCTION RIGHT AFTER:
+async function fetchCardDataCached(cardName, productTitle, cache) {
+  const key = normalizeCardName(cardName);
+  
+  if (cache.has(key)) {
+    console.log(`   ♻️  Using cached result`);
+    return cache.get(key);
+  }
+  
+  const result = await fetchCardData(cardName, productTitle);
+  if (result) {
+    cache.set(key, result);
+  }
+  return result;
+}
+
+export const handler = async (event) => {
   console.log('\n========================================')
   console.log('🚀 SYNC FUNCTION STARTED')
   console.log('========================================\n')
@@ -109,45 +167,32 @@ exports.handler = async (event) => {
 
     console.log(`📦 Fetching products from Shopify: ${shopDomain}`)
 
-    // Fetch products from Shopify
-    const shopifyResponse = await fetch(
-      `https://${shopDomain}/admin/api/2024-01/products.json?limit=250`,
-      {
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
-
-    if (!shopifyResponse.ok) {
-      const errorText = await shopifyResponse.text()
-      throw new Error(`Shopify API error: ${errorText}`)
-    }
+    // ... Shopify fetch code ...
 
     const shopifyData = await shopifyResponse.json()
     const products = shopifyData.products || []
 
     console.log(`📦 Processing ${products.length} products...\n`)
 
-    // Save products to Supabase
+    // ADD THESE TWO LINES HERE:
+    const limit = pLimit(10); // Max 10 concurrent API calls
+    const cardCache = new Map(); // In-memory cache for this sync
+
+    // NOW FIND YOUR productsToInsert section and wrap it:
     const productsToInsert = await Promise.all(
-      products.map(async (product) => {
+      products.map(product => limit(async () => {  // ADD limit() wrapper here
         console.log(`\n====================================`)
         console.log(`📦 Product: "${product.title}"`)
         
         const matchedCardName = extractCardName(product.title)
         console.log(`📝 Extracted: "${matchedCardName}"`)
 
-        // Check if product has Shopify images
         let productImages = product.images
         let finalCardName = matchedCardName
 
-        // Only fetch from YGOProDeck if NO Shopify image exists
         if (!productImages || productImages.length === 0) {
           console.log(`🔍 No Shopify image`)
           
-          // Check if we already have this product in the database with an image
           const { data: existingProduct } = await supabase
             .from('products')
             .select('images, matched_card_name')
@@ -156,13 +201,15 @@ exports.handler = async (event) => {
             .single()
           
           if (existingProduct?.images && existingProduct.images.length > 0) {
-            // Use existing image from database (don't fetch again)
             productImages = existingProduct.images
             finalCardName = existingProduct.matched_card_name
             console.log(`✅ Using existing database image`)
           } else {
-            // Fetch from YGOProDeck (first time only)
-            const cardData = await fetchCardData(matchedCardName, product.title)
+            // CHANGE THIS LINE:
+            // const cardData = await fetchCardData(matchedCardName, product.title)
+            // TO THIS:
+            const cardData = await fetchCardDataCached(matchedCardName, product.title, cardCache)
+            
             finalCardName = cardData?.officialName || matchedCardName
             
             if (cardData?.image) {
@@ -171,9 +218,11 @@ exports.handler = async (event) => {
             }
           }
         } else {
-          // Has Shopify image - just get official name
           console.log(`✅ Has Shopify image`)
-          const cardData = await fetchCardData(matchedCardName, product.title)
+          // CHANGE THIS LINE TOO:
+          // const cardData = await fetchCardData(matchedCardName, product.title)
+          // TO THIS:
+          const cardData = await fetchCardDataCached(matchedCardName, product.title, cardCache)
           finalCardName = cardData?.officialName || matchedCardName
         }
 
@@ -193,18 +242,16 @@ exports.handler = async (event) => {
           normalized_card_name: normalizeCardName(finalCardName),
           updated_at: new Date().toISOString()
         }
-      })
+      }))  // CLOSE the limit() wrapper here
     )
 
     console.log(`\n💾 Saving to database...`)
 
-    // Delete old products for this store
     await supabase
       .from('products')
       .delete()
       .eq('store_id', storeId)
 
-    // Insert new products
     const { error: insertError } = await supabase
       .from('products')
       .insert(productsToInsert)

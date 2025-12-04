@@ -2,6 +2,19 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 import { searchYGOCards, extractCardName } from '../utils/ygoprodeck'
 
+// ADD THIS HELPER FUNCTION:
+function normalizeCardName(name) {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .replace(/[''"]/g, '')
+    .replace(/[-–—∙•·]/g, ' ')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+
 function MatchModal({ product, onClose, onSave }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -9,22 +22,44 @@ function MatchModal({ product, onClose, onSave }) {
   const [searching, setSearching] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Auto-suggest on mount
-  useEffect(() => {
-    const suggestedName = extractCardName(product.title)
-    if (suggestedName) {
-      setSearchQuery(suggestedName)
-      handleSearch(suggestedName)
-    }
-  }, [product.title])
+ useEffect(() => {
+  setSelectedCard(null)
+  setSearchResults([])
+  setSearchQuery('')
   
-  // ESC key listener
-  useEffect(() => {
-    function handleEscKey(event) {
-      if (event.key === 'Escape') {
-        onClose()
-      }
+  const suggested = extractCardName(product.title)
+  if (suggested) {
+    setSearchQuery(suggested)
+    handleSearch(suggested)
+  }
+}, [product.id])
+
+// ADD THIS ENTIRE useEffect FOR LIVE SEARCH:
+useEffect(() => {
+  // Don't search if query is too short
+  if (searchQuery.trim().length < 3) {
+    setSearchResults([])
+    setSearching(false)
+    return
+  }
+
+  // Debounce: wait 350ms after user stops typing
+  const timer = setTimeout(() => {
+    handleSearch(searchQuery)
+  }, 350)
+
+  // Cleanup: cancel timer if user keeps typing
+  return () => clearTimeout(timer)
+}, [searchQuery])
+
+// ESC key listener
+useEffect(() => {
+  function handleEscKey(event) {
+    if (event.key === 'Escape') {
+      onClose()
     }
+  }
+  // ... rest of ESC listener
 
     document.addEventListener('keydown', handleEscKey)
     
@@ -57,7 +92,8 @@ async function handleSave() {
       .from('products')
       .update({
         matched_card_name: selectedCard.name,
-        matched_card_id: selectedCard.id.toString()  // ← Changed from card_id
+        matched_card_id: selectedCard.id.toString(),
+        normalized_card_name: normalizeCardName(selectedCard.name) // ADD THIS LINE
       })
       .eq('id', product.id)
       .select()
@@ -208,47 +244,33 @@ async function handleSave() {
           </div>
         </div>
 
-        {/* Search Section */}
-        <div style={{ marginBottom: '30px' }}>
-          <label style={{ display: 'block', color: '#888', marginBottom: '8px', fontSize: '0.9rem' }}>
-            Search for Yu-Gi-Oh! Card
-          </label>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Enter card name..."
-              style={{
-                flex: 1,
-                padding: '12px',
-                background: '#0a0a1f',
-                border: '1px solid #2d2d44',
-                borderRadius: '8px',
-                color: '#fff',
-                fontSize: '1rem'
-              }}
-            />
-            <button
-              onClick={() => handleSearch()}
-              disabled={searching}
-              style={{
-                padding: '12px 24px',
-                background: searching ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#0a0a1f',
-                cursor: searching ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                fontSize: '1rem',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              {searching ? 'Searching...' : 'Search'}
-            </button>
-          </div>
-        </div>
+       {/* Search Section */}
+<div style={{ marginBottom: '30px' }}>
+  <label style={{ display: 'block', color: '#888', marginBottom: '8px', fontSize: '0.9rem' }}>
+    Search for Yu-Gi-Oh! Card (type to search)
+  </label>
+  <input
+    type="text"
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+    placeholder="Type at least 3 characters..." // UPDATED
+    style={{
+      width: '100%', // CHANGED from flex: 1
+      padding: '12px',
+      background: '#0a0a1f',
+      border: '1px solid #2d2d44',
+      borderRadius: '8px',
+      color: '#fff',
+      fontSize: '1rem'
+    }}
+  />
+  {searching && ( // ADD THIS LOADING INDICATOR
+    <div style={{ color: '#888', fontSize: '0.9rem', marginTop: '8px' }}>
+      🔍 Searching...
+    </div>
+  )}
+</div>
 
         {/* Search Results */}
         {searchResults.length > 0 && (

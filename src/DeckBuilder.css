@@ -367,3 +367,13 @@
   font-size: 1.3rem;
   padding: 15px;
 }
+@keyframes shine {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-results {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}

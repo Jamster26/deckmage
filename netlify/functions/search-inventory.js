@@ -1,16 +1,22 @@
-const { createClient } = require('@supabase/supabase-js')
+import { createClient } from '@supabase/supabase-js'
+import pLimit from 'p-limit';
+
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// Add this helper function at the top of search-inventory.js
+// In search-inventory.js - REPLACE your normalizeCardName with this:
 function normalizeCardName(name) {
+  if (!name) return '';
   return name
     .toLowerCase()
-    .replace(/[\s-]/g, '') // Remove spaces and hyphens
-    .replace(/[^a-z0-9]/g, '') // Remove special characters
+    .replace(/[''"]/g, '')           
+    .replace(/[-–—∙•·]/g, ' ')       // Same as sync!
+    .replace(/[^\w\s]/g, '')         
+    .replace(/\s+/g, ' ')            
+    .trim();
 }
 
 // Add these helper functions at the top of the file
@@ -130,7 +136,7 @@ function extractEdition(title) {
   return null
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   // Enable CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -153,6 +159,8 @@ exports.handler = async (event) => {
 
   try {
     const { shopId, cardNames } = JSON.parse(event.body)
+
+    console.log(`🔍 Search request | Shop: ${shopId} | Cards: ${cardNames.length}`)
 
     if (!shopId || !cardNames || !Array.isArray(cardNames)) {
       return {
@@ -184,45 +192,65 @@ exports.handler = async (event) => {
 
 // Normalize the search terms
     const normalizedCardNames = cardNames.map(normalizeCardName)
+    const uniqueNormalized = [...new Set(normalizedCardNames)] // Add this
+
 
     console.log('Normalized search terms:', normalizedCardNames)
 
-    // Query using normalized column for fast lookup
-    const { data: products, error: productsError } = await supabase
-      .from('products')
-      .select('*')
-      .eq('store_id', store.id)
-      .in('normalized_card_name', normalizedCardNames)
+   // Query using normalized column for fast lookup (chunked to avoid .in() limit)
+const chunkSize = 30; // Safe limit for Supabase .in()
+// Then use uniqueNormalized for chunking:
+const chunks = [];
+for (let i = 0; i < uniqueNormalized.length; i += chunkSize) {
+  chunks.push(uniqueNormalized.slice(i, i + chunkSize));
+}
 
-    if (productsError) {
-      console.error('Products query error:', productsError)
-      throw productsError
-    }
+let products = [];
+for (const chunk of chunks) {
+  const { data, error: productsError } = await supabase
+    .from('products')
+    .select('*')
+    .eq('store_id', store.id)
+    .in('normalized_card_name', chunk);
+
+  
+  if (data) products.push(...data);
+}
 
     console.log(`Found ${products.length} matching products`)
 // Before the forEach loop, fetch YGOPro data once per unique card
+// Fetch YGOPro data with rate limiting
+const limit = pLimit(8);
 const ygoproDataCache = {}
 
 try {
-  for (const cardName of cardNames) {
-    const normalizedSearch = normalizeCardName(cardName)
-    const matchingProducts = products.filter(p => 
-      p.normalized_card_name === normalizedSearch
-    )
-    
-    if (matchingProducts.length > 0) {
-      // Fetch YGOPro data once for this card
-      const matchedCardName = matchingProducts[0].matched_card_name
-      console.log(`Fetching YGOPro data for: ${matchedCardName}`)
+  const ygoproPromises = cardNames.map(cardName =>
+    limit(async () => {
+      const normalizedSearch = normalizeCardName(cardName)
+      const matchingProducts = products.filter(p => 
+        p.normalized_card_name === normalizedSearch
+      )
       
-      try {
-        ygoproDataCache[cardName] = await fetchCardDataFromYGOPro(matchedCardName)
-      } catch (error) {
-        console.error(`Failed to fetch YGOPro data for ${matchedCardName}:`, error)
-        ygoproDataCache[cardName] = null  // Set to null on error
+      if (matchingProducts.length > 0) {
+        const matchedCardName = matchingProducts[0].matched_card_name
+        console.log(`Fetching YGOPro data for: ${matchedCardName}`)
+        
+        try {
+          const data = await fetchCardDataFromYGOPro(matchedCardName)
+          return [cardName, data]
+        } catch (error) {
+          console.error(`Failed to fetch YGOPro data for ${matchedCardName}:`, error)
+          return [cardName, null]
+        }
       }
-    }
-  }
+      return [cardName, null]
+    })
+  )
+
+  const ygoproResults = await Promise.all(ygoproPromises)
+  ygoproResults.forEach(([cardName, data]) => {
+    ygoproDataCache[cardName] = data
+  })
 } catch (error) {
   console.error('Error in YGOPro fetch loop:', error)
   // Continue without YGOPro data - search will still work

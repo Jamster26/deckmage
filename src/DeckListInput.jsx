@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import pLimit from 'p-limit' // ADD THIS LINE
+
 import './DeckBuilder.css'
 
 function DeckListInput({ theme, layout, primaryColor, size }) {
@@ -86,130 +88,135 @@ const handleParse = async () => {
   setLoading(false)
 }
 
-// NEW: Real shop inventory lookup
-async function handleRealShopMode(parsedCards, shopId) {
-  const cardNames = parsedCards.map(c => c.cardName)
-  
-  try {
-    // Call YOUR API
-    const response = await fetch('/.netlify/functions/search-inventory', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        shopId: shopId,
-        cardNames: cardNames
+ // UPDATED: Real shop inventory lookup with p-limit rate limiting
+  async function handleRealShopMode(parsedCards, shopId) {
+    const cardNames = parsedCards.map(c => c.cardName)
+    
+    try {
+      const response = await fetch('/.netlify/functions/search-inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopId: shopId,
+          cardNames: cardNames
+        })
       })
-    })
-    
-    const data = await response.json()
-    
-    if (!data.success) {
-      alert('Error searching shop inventory: ' + data.error)
-      return
-    }
-    
-    // Map results to deck builder format
-    const results = []
-    const notFound = []
-    
-    // Fetch card data
-    for (const card of parsedCards) {
-      const shopProducts = data.results[card.cardName]
       
-    if (shopProducts && shopProducts.length > 0) {
-  // Use the matched_card_name from database (already cleaned properly)
-  const correctCardName = shopProducts[0].matchedCardName || card.cardName
-        
-        // PRIORITY 1: Use shop's product image if available
-        let cardImage = shopProducts[0].image
-        
-        // PRIORITY 2: If no shop image, fetch from YGOProDeck
-        if (!cardImage) {
-          cardImage = 'https://images.ygoprodeck.com/images/cards/back.jpg' // fallback
+      const data = await response.json()
+      
+      if (!data.success) {
+        alert('Error searching shop inventory: ' + data.error)
+        return
+      }
+      
+      const results = []
+      const notFound = []
+
+      // RATE LIMITED YGOProDeck image fetching
+      const limit = pLimit(8)
+      
+      const cardResults = await Promise.all(
+        parsedCards.map(card => limit(async () => {
+          const shopProducts = data.results[card.cardName]
           
-          try {
-            // Try with the shop's card name first (has correct hyphens)
-            let ygoproResponse = await fetch(
-              `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(correctCardName)}`
-            )
-            let ygoproData = await ygoproResponse.json()
+          if (shopProducts && shopProducts.length > 0) {
+            const correctCardName = shopProducts[0].matchedCardName || card.cardName
+            let cardImage = shopProducts[0].image
             
-            // If that fails, try fuzzy search
-            if (ygoproData.error) {
-              console.log(`⚠️ Exact match failed for "${correctCardName}", trying fuzzy search...`)
-              ygoproResponse = await fetch(
-                `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(card.cardName)}`
-              )
-              ygoproData = await ygoproResponse.json()
+            if (!cardImage) {
+              cardImage = 'https://images.ygoprodeck.com/images/cards/back.jpg'
+              
+              try {
+                let ygoproResponse = await fetch(
+                  `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(correctCardName)}`
+                )
+                let ygoproData = await ygoproResponse.json()
+                
+                if (ygoproData.error) {
+                  console.log(`Warning: Exact match failed for "${correctCardName}", trying fuzzy...`)
+                  ygoproResponse = await fetch(
+                    `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(card.cardName)}`
+                  )
+                  ygoproData = await ygoproResponse.json()
+                }
+                
+                if (ygoproData.data?.[0]?.card_images?.[0]?.image_url) {
+                  cardImage = ygoproData.data[0].card_images[0].image_url
+                  console.log(`Success: Got image for ${card.cardName}`)
+                }
+              } catch (err) {
+                console.warn(`Warning: Could not fetch image for ${card.cardName}:`, err)
+              }
+            } else {
+              console.log(`Success: Using shop image for ${card.cardName}`)
             }
             
-            if (ygoproData.data && ygoproData.data[0]?.card_images?.[0]?.image_url) {
-              cardImage = ygoproData.data[0].card_images[0].image_url
-              console.log(`✅ Got image for ${card.cardName} from YGOProDeck`)
+            return {
+              found: true,
+              data: {
+                quantity: card.quantity,
+                cardName: card.cardName,
+                shopProducts,
+                cardData: {
+                  name: correctCardName,
+                  card_images: [{ image_url: cardImage }],
+                  card_sets: shopProducts.map(p => ({
+                    set_name: `${p.setCode || 'Unknown'} - ${p.rarity || 'Unknown'} - ${p.condition || 'Near Mint'}`,
+                    set_code: p.setCode || 'N/A',
+                    set_rarity: p.rarity || 'Unknown',
+                    set_price: p.price?.toString() || '0.00',
+                    productId: p.productId,
+                    variantId: p.variantId,
+                    available: p.available,
+                    inventoryQuantity: p.inventoryQuantity
+                  }))
+                }
+              }
             }
-          } catch (err) {
-            console.warn(`⚠️ Could not fetch image for ${card.cardName}:`, err)
+          } else {
+            return { found: false, cardName: card.cardName }
           }
+        }))
+      )
+      
+      // Separate results
+      cardResults.forEach(result => {
+        if (result.found) {
+          results.push(result.data)
         } else {
-          console.log(`✅ Using shop image for ${card.cardName}`)
+          notFound.push(result.cardName)
         }
-        
-        // Card found in shop inventory
-        results.push({
-          quantity: card.quantity,
-          cardName: card.cardName,
-          shopProducts: shopProducts,
-          cardData: {
-            name: correctCardName,
-            card_images: [{ image_url: cardImage }],
-            card_sets: shopProducts.map(p => ({
-              set_name: `${p.setCode || 'Unknown'} - ${p.rarity || 'Unknown'} - ${p.condition || 'Near Mint'}`,
-              set_code: p.setCode || 'N/A',
-              set_rarity: p.rarity || 'Common',
-              set_price: p.price?.toString() || '0.00',
-              productId: p.productId,
-              variantId: p.variantId,
-              available: p.available,
-              inventoryQuantity: p.inventoryQuantity
-            }))
-          }
-        })
-      } else {
-        notFound.push(card.cardName)
+      })
+
+      console.log(`Found ${results.length}/${parsedCards.length} cards in shop inventory`)
+      if (notFound.length > 0) {
+        console.warn('Cards not in inventory:', notFound)
+        alert(`Warning: ${notFound.length} cards not found in shop inventory:\n\n${notFound.join('\n')}\n\nThese cards are not available at this shop.`)
       }
+      
+      setSearchResults(results)
+      
+      // Auto-select cheapest version
+      const autoSelected = {}
+      results.forEach((result, index) => {
+        if (result.cardData.card_sets && result.cardData.card_sets.length > 0) {
+          const cheapest = result.cardData.card_sets.reduce((min, set) => {
+            const price = parseFloat(set.set_price) || 0
+            const minPrice = parseFloat(min.set_price) || 0
+            if (price === 0) return min
+            if (minPrice === 0) return set
+            return price < minPrice ? set : min
+          })
+          autoSelected[index] = cheapest
+        }
+      })
+      setSelectedVersions(autoSelected)
+      
+    } catch (error) {
+      console.error('Error fetching shop inventory:', error)
+      alert('Failed to search shop inventory. Please try again.')
     }
-    
-    console.log(`Found ${results.length}/${parsedCards.length} cards in shop inventory`)
-    if (notFound.length > 0) {
-      console.warn('Cards not in inventory:', notFound)
-      alert(`⚠️ ${notFound.length} cards not found in shop inventory:\n\n${notFound.join('\n')}\n\nThese cards are not available at this shop.`)
-    }
-    
-    setSearchResults(results)
-    
-    // Auto-select cheapest version
-    const autoSelected = {}
-    results.forEach((result, index) => {
-      if (result.cardData.card_sets && result.cardData.card_sets.length > 0) {
-        const cheapest = result.cardData.card_sets.reduce((min, set) => {
-          const price = parseFloat(set.set_price) || 0
-          const minPrice = parseFloat(min.set_price) || 0
-          
-          if (price === 0) return min
-          if (minPrice === 0) return set
-          
-          return price < minPrice ? set : min
-        })
-        autoSelected[index] = cheapest
-      }
-    })
-    setSelectedVersions(autoSelected)
-    
-  } catch (error) {
-    console.error('Error fetching shop inventory:', error)
-    alert('Failed to search shop inventory. Please try again.')
   }
-}
 
 // Demo mode - YGOProDeck search (your existing logic)
 async function handleDemoMode(parsedCards) {
@@ -402,8 +409,26 @@ return (
         </div>
       </div>
 
-      {loading && <p className="loading-message">Searching for cards...</p>}
-
+{loading && (
+  <div className="skeleton-results" style={{ marginTop: '20px' }}>
+    {[...Array(6)].map((_, i) => (
+      <div 
+        key={i} 
+        className="skeleton-card" 
+        style={{
+          height: '140px',
+          background: theme.theme === 'dark'
+            ? 'linear-gradient(90deg, #1a1a2e 25%, #242438 50%, #1a1a2e 75%)'
+            : 'linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%)',
+          backgroundSize: '200% 100%',
+          borderRadius: '12px',
+          marginBottom: '15px',
+          animation: 'shine 1.5s infinite'
+        }}
+      />
+    ))}
+  </div>
+)}
       {searchResults.length > 0 && (
         <div className="results-container">
 <h3 className="results-header" style={{ color: theme.text }}>Found {searchResults.length} cards:</h3>
@@ -445,6 +470,23 @@ return (
                         </div>
                       </div>
                     )}
+
+                    {/* ADD THIS NEW STOCK WARNING */}
+{selectedVersion && selectedVersion.inventoryQuantity < 5 && (
+  <div style={{
+    marginTop: '10px',
+    padding: '8px 12px',
+    background: 'rgba(255, 68, 68, 0.15)',
+    border: '1px solid #ff4444',
+    borderRadius: '6px',
+    color: '#ff6666',
+    fontSize: '0.9rem',
+    fontWeight: 'bold',
+    textAlign: 'center'
+  }}>
+    ⚠️ Only {selectedVersion.inventoryQuantity} left in stock!
+  </div>
+)}
                     
                     {/* Available Sets/Printings */}
                     {result.cardData.card_sets && result.cardData.card_sets.length > 1 && (
@@ -497,9 +539,40 @@ return (
             textAlign: 'center',
             paddingBottom: '30px'
           }}>
-            <button
-              className="add-all-button"
-               onClick={() => {
+         {/* Copy Deck Button */}
+<button
+  onClick={() => {
+    const text = searchResults.map((r, i) => {
+      const set = selectedVersions[i]
+      return `${r.quantity}x ${r.cardData.name} (${set?.set_name || 'Unknown'}) - $${(parseFloat(set?.set_price || 0) * r.quantity).toFixed(2)}`
+    }).join('\n') + `\n\nTOTAL: $${calculateTotal()}`
+    
+    navigator.clipboard.writeText(text)
+    alert('✅ Deck list with prices copied to clipboard!')
+  }}
+  style={{
+    background: theme.theme === 'dark' 
+      ? 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)'
+      : 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+    color: 'white',
+    border: 'none',
+    padding: '15px 40px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    borderRadius: '10px',
+    cursor: 'pointer',
+    marginBottom: '15px',
+    marginRight: '15px',
+    boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
+  }}
+>
+  📋 Copy Deck with Prices
+</button>
+
+{/* Existing Add All to Basket button stays here */}
+<button
+  className="add-all-button"
+  onClick={() => {
   const urlParams = new URLSearchParams(window.location.search)
   const shopId = urlParams.get('shop')
 
