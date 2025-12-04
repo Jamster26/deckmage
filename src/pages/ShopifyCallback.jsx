@@ -21,27 +21,27 @@ function ShopifyCallback() {
           throw new Error('Invalid state parameter')
         }
 
-        setStatus('Exchanging authorization code...')
+       setStatus('Exchanging authorization code...')
 
-        // Exchange code for the access token
-        const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            client_id: import.meta.env.VITE_SHOPIFY_CLIENT_ID,
-            client_secret: import.meta.env.VITE_SHOPIFY_CLIENT_SECRET,
-            code: code,
-          }),
-        })
+// Call our Netlify function instead of Shopify directly
+const response = await fetch('/.netlify/functions/shopify-oauth', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    code: code,
+    shop: shop,
+  }),
+})
 
-        if (!response.ok) {
-          throw new Error('Failed to get access token')
-        }
+if (!response.ok) {
+  const errorData = await response.json()
+  throw new Error(errorData.error || 'Failed to get access token')
+}
 
-        const data = await response.json()
-        const accessToken = data.access_token
+const data = await response.json()
+const accessToken = data.access_token
 
         setStatus('Saving store connection...')
 
