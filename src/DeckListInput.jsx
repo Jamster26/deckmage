@@ -86,7 +86,7 @@ const handleParse = async () => {
   setLoading(false)
 }
 
-// Update handleRealShopMode in DeckListInput.jsx
+// NEW: Real shop inventory lookup
 async function handleRealShopMode(parsedCards, shopId) {
   const cardNames = parsedCards.map(c => c.cardName)
   
@@ -112,26 +112,46 @@ async function handleRealShopMode(parsedCards, shopId) {
     const results = []
     const notFound = []
     
-    // NEW: Fetch card images from YGOProDeck in parallel
+    // Fetch card data
     for (const card of parsedCards) {
       const shopProducts = data.results[card.cardName]
       
       if (shopProducts && shopProducts.length > 0) {
-        // Try to get card image from YGOProDeck API
-        let cardImage = 'https://images.ygoprodeck.com/images/cards/back.jpg' // fallback
+        // Use the matched_card_name from shop inventory (which has correct formatting)
+        const correctCardName = shopProducts[0].title.split('-')[0].trim() || card.cardName
         
-        try {
-          const ygoproResponse = await fetch(
-            `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(card.cardName)}`
-          )
-          const ygoproData = await ygoproResponse.json()
+        // PRIORITY 1: Use shop's product image if available
+        let cardImage = shopProducts[0].image
+        
+        // PRIORITY 2: If no shop image, fetch from YGOProDeck
+        if (!cardImage) {
+          cardImage = 'https://images.ygoprodeck.com/images/cards/back.jpg' // fallback
           
-          if (ygoproData.data && ygoproData.data[0]?.card_images?.[0]?.image_url) {
-            cardImage = ygoproData.data[0].card_images[0].image_url
-            console.log(`✅ Got image for ${card.cardName} from YGOProDeck`)
+          try {
+            // Try with the shop's card name first (has correct hyphens)
+            let ygoproResponse = await fetch(
+              `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(correctCardName)}`
+            )
+            let ygoproData = await ygoproResponse.json()
+            
+            // If that fails, try fuzzy search
+            if (ygoproData.error) {
+              console.log(`⚠️ Exact match failed for "${correctCardName}", trying fuzzy search...`)
+              ygoproResponse = await fetch(
+                `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(card.cardName)}`
+              )
+              ygoproData = await ygoproResponse.json()
+            }
+            
+            if (ygoproData.data && ygoproData.data[0]?.card_images?.[0]?.image_url) {
+              cardImage = ygoproData.data[0].card_images[0].image_url
+              console.log(`✅ Got image for ${card.cardName} from YGOProDeck`)
+            }
+          } catch (err) {
+            console.warn(`⚠️ Could not fetch image for ${card.cardName}:`, err)
           }
-        } catch (err) {
-          console.warn(`⚠️ Could not fetch image for ${card.cardName}:`, err)
+        } else {
+          console.log(`✅ Using shop image for ${card.cardName}`)
         }
         
         // Card found in shop inventory
@@ -140,7 +160,7 @@ async function handleRealShopMode(parsedCards, shopId) {
           cardName: card.cardName,
           shopProducts: shopProducts,
           cardData: {
-            name: card.cardName,
+            name: correctCardName,
             card_images: [{ image_url: cardImage }],
             card_sets: shopProducts.map(p => ({
               set_name: `${p.setCode || 'Unknown'} - ${p.rarity || 'Unknown'} - ${p.condition || 'Near Mint'}`,
