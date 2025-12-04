@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import pLimit from 'p-limit';
-
+// REMOVED: import pLimit from 'p-limit';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -13,7 +12,7 @@ function normalizeCardName(name) {
   return name
     .toLowerCase()
     .replace(/[''"]/g, '')           
-    .replace(/[-–—∙•·]/g, ' ')       // Same as sync!
+    .replace(/[-–—∙•·]/g, ' ')       
     .replace(/[^\w\s]/g, '')         
     .replace(/\s+/g, ' ')            
     .trim();
@@ -90,7 +89,7 @@ async function fetchCardDataFromYGOPro(cardName) {
     }
   } catch (error) {
     console.warn(`Could not fetch YGOPro data for ${cardName}:`, error.message)
-    return null  // Return null instead of throwing
+    return null
   }
   
   return null
@@ -126,7 +125,7 @@ function extractCondition(title) {
     }
   }
   
-  return 'Near Mint' // Default assumption
+  return 'Near Mint'
 }
 
 function extractEdition(title) {
@@ -137,7 +136,6 @@ function extractEdition(title) {
 }
 
 export const handler = async (event) => {
-  // Enable CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -173,7 +171,6 @@ export const handler = async (event) => {
     console.log(`Searching inventory for shop: ${shopId}`)
     console.log(`Card names:`, cardNames)
 
-    // Look up the store
     const { data: store, error: storeError } = await supabase
       .from('connected_stores')
       .select('id')
@@ -188,132 +185,126 @@ export const handler = async (event) => {
       }
     }
 
-   // In netlify/functions/search-inventory.js
-
-// Normalize the search terms
     const normalizedCardNames = cardNames.map(normalizeCardName)
-    const uniqueNormalized = [...new Set(normalizedCardNames)] // Add this
-
+    const uniqueNormalized = [...new Set(normalizedCardNames)]
 
     console.log('Normalized search terms:', normalizedCardNames)
 
-   // Query using normalized column for fast lookup (chunked to avoid .in() limit)
-const chunkSize = 30; // Safe limit for Supabase .in()
-// Then use uniqueNormalized for chunking:
-const chunks = [];
-for (let i = 0; i < uniqueNormalized.length; i += chunkSize) {
-  chunks.push(uniqueNormalized.slice(i, i + chunkSize));
-}
+    const chunkSize = 30
+    const chunks = []
+    for (let i = 0; i < uniqueNormalized.length; i += chunkSize) {
+      chunks.push(uniqueNormalized.slice(i, i + chunkSize))
+    }
 
-let products = [];
-for (const chunk of chunks) {
-  const { data, error: productsError } = await supabase
-    .from('products')
-    .select('*')
-    .eq('store_id', store.id)
-    .in('normalized_card_name', chunk);
-
-  
-  if (data) products.push(...data);
-}
+    let products = []
+    for (const chunk of chunks) {
+      const { data, error: productsError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('store_id', store.id)
+        .in('normalized_card_name', chunk)
+      
+      if (data) products.push(...data)
+    }
 
     console.log(`Found ${products.length} matching products`)
-// Before the forEach loop, fetch YGOPro data once per unique card
-// Fetch YGOPro data with rate limiting
-const limit = pLimit(8);
-const ygoproDataCache = {}
 
-try {
-  const ygoproPromises = cardNames.map(cardName =>
-    limit(async () => {
+    // Fetch YGOPro data with manual batching
+    const ygoproDataCache = {}
+    const BATCH_SIZE = 8
+
+    try {
+      for (let i = 0; i < cardNames.length; i += BATCH_SIZE) {
+        const batch = cardNames.slice(i, i + BATCH_SIZE)
+        
+        const batchPromises = batch.map(async (cardName) => {
+          const normalizedSearch = normalizeCardName(cardName)
+          const matchingProducts = products.filter(p => 
+            p.normalized_card_name === normalizedSearch
+          )
+          
+          if (matchingProducts.length > 0) {
+            const matchedCardName = matchingProducts[0].matched_card_name
+            console.log(`Fetching YGOPro data for: ${matchedCardName}`)
+            
+            try {
+              const data = await fetchCardDataFromYGOPro(matchedCardName)
+              return [cardName, data]
+            } catch (error) {
+              console.error(`Failed to fetch YGOPro data for ${matchedCardName}:`, error)
+              return [cardName, null]
+            }
+          }
+          return [cardName, null]
+        })
+
+        const batchResults = await Promise.all(batchPromises)
+        batchResults.forEach(([cardName, data]) => {
+          ygoproDataCache[cardName] = data
+        })
+        
+        if (i + BATCH_SIZE < cardNames.length) {
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    } catch (error) {
+      console.error('Error in YGOPro fetch loop:', error)
+    }
+
+    const results = {}
+
+    cardNames.forEach(cardName => {
       const normalizedSearch = normalizeCardName(cardName)
+      
       const matchingProducts = products.filter(p => 
         p.normalized_card_name === normalizedSearch
       )
-      
+
       if (matchingProducts.length > 0) {
-        const matchedCardName = matchingProducts[0].matched_card_name
-        console.log(`Fetching YGOPro data for: ${matchedCardName}`)
+        const ygoproData = ygoproDataCache[cardName]
         
-        try {
-          const data = await fetchCardDataFromYGOPro(matchedCardName)
-          return [cardName, data]
-        } catch (error) {
-          console.error(`Failed to fetch YGOPro data for ${matchedCardName}:`, error)
-          return [cardName, null]
-        }
-      }
-      return [cardName, null]
-    })
-  )
-
-  const ygoproResults = await Promise.all(ygoproPromises)
-  ygoproResults.forEach(([cardName, data]) => {
-    ygoproDataCache[cardName] = data
-  })
-} catch (error) {
-  console.error('Error in YGOPro fetch loop:', error)
-  // Continue without YGOPro data - search will still work
-}
-
-// Group products by original card name (for response)
-const results = {}
-
-cardNames.forEach(cardName => {
-  const normalizedSearch = normalizeCardName(cardName)
-  
-  const matchingProducts = products.filter(p => 
-    p.normalized_card_name === normalizedSearch
-  )
-
-  if (matchingProducts.length > 0) {
-    const ygoproData = ygoproDataCache[cardName]
-    
-    // Map products to the format the deck builder expects
-    results[cardName] = matchingProducts.map(product => {
-      // Get the first variant for pricing
-      const variant = product.variants?.[0] || {}
-      const setCode = product.set_code || extractSetCode(product.title, variant.sku) || 'N/A'
-      
-      return {
-        productId: product.shopify_product_id,
-        variantId: variant.id,
-        title: product.title,
-        matchedCardName: product.matched_card_name,
-        price: parseFloat(variant.price) || 0,
-        compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
-        sku: variant.sku || '',
-        available: variant.inventory_quantity > 0,
-        inventoryQuantity: variant.inventory_quantity || 0,
-        image: product.images?.[0]?.src || null,
-        setCode: setCode,
-        setName: getSetName(setCode, ygoproData?.sets) || null,
-        rarity: product.rarity || extractRarity(product.title) || 'Common',
-        condition: product.condition || extractCondition(product.title),
-        edition: product.edition || extractEdition(product.title) || '',
-        // NEW: Rich card data from YGOProDeck
-        description: product.description || ygoproData?.description || '',
-        cardType: ygoproData?.type || '',
-        race: ygoproData?.race || '',
-        attribute: ygoproData?.attribute || '',
-        atk: ygoproData?.atk,
-        def: ygoproData?.def,
-        level: ygoproData?.level
+        results[cardName] = matchingProducts.map(product => {
+          const variant = product.variants?.[0] || {}
+          const setCode = product.set_code || extractSetCode(product.title, variant.sku) || 'N/A'
+          
+          return {
+            productId: product.shopify_product_id,
+            variantId: variant.id,
+            title: product.title,
+            matchedCardName: product.matched_card_name,
+            price: parseFloat(variant.price) || 0,
+            compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
+            sku: variant.sku || '',
+            available: variant.inventory_quantity > 0,
+            inventoryQuantity: variant.inventory_quantity || 0,
+            image: product.images?.[0]?.src || null,
+            setCode: setCode,
+            setName: getSetName(setCode, ygoproData?.sets) || null,
+            rarity: product.rarity || extractRarity(product.title) || 'Common',
+            condition: product.condition || extractCondition(product.title),
+            edition: product.edition || extractEdition(product.title) || '',
+            description: product.description || ygoproData?.description || '',
+            cardType: ygoproData?.type || '',
+            race: ygoproData?.race || '',
+            attribute: ygoproData?.attribute || '',
+            atk: ygoproData?.atk,
+            def: ygoproData?.def,
+            level: ygoproData?.level
+          }
+        })
+      } else {
+        results[cardName] = []
       }
     })
-  } else {
-    results[cardName] = []
-  }
-})
 
-return {
-  statusCode: 200,
-  headers,
-  body: JSON.stringify({
-    success: true,
-    results
-  })
-}
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        results
+      })
+    }
 
   } catch (error) {
     console.error('Search inventory error:', error)
@@ -324,4 +315,3 @@ return {
     }
   }
 }
-

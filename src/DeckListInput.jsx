@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import pLimit from 'p-limit' // ADD THIS LINE
 
 import './DeckBuilder.css'
 
@@ -88,35 +87,38 @@ const handleParse = async () => {
   setLoading(false)
 }
 
- // UPDATED: Real shop inventory lookup with p-limit rate limiting
-  async function handleRealShopMode(parsedCards, shopId) {
-    const cardNames = parsedCards.map(c => c.cardName)
-    
-    try {
-      const response = await fetch('/.netlify/functions/search-inventory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          shopId: shopId,
-          cardNames: cardNames
-        })
+ async function handleRealShopMode(parsedCards, shopId) {
+  const cardNames = parsedCards.map(c => c.cardName)
+  
+  try {
+    const response = await fetch('/.netlify/functions/search-inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shopId: shopId,
+        cardNames: cardNames
       })
-      
-      const data = await response.json()
-      
-      if (!data.success) {
-        alert('Error searching shop inventory: ' + data.error)
-        return
-      }
-      
-      const results = []
-      const notFound = []
+    })
+    
+    const data = await response.json()
+    
+    if (!data.success) {
+      alert('Error searching shop inventory: ' + data.error)
+      return
+    }
+    
+    const results = []
+    const notFound = []
 
-      // RATE LIMITED YGOProDeck image fetching
-      const limit = pLimit(8)
+    // Manual batching for YGOProDeck image fetching
+    const BATCH_SIZE = 8
+    const cardResults = []
+
+    for (let i = 0; i < parsedCards.length; i += BATCH_SIZE) {
+      const batch = parsedCards.slice(i, i + BATCH_SIZE)
       
-      const cardResults = await Promise.all(
-        parsedCards.map(card => limit(async () => {
+      const batchResults = await Promise.all(
+        batch.map(async (card) => {
           const shopProducts = data.results[card.cardName]
           
           if (shopProducts && shopProducts.length > 0) {
@@ -176,47 +178,55 @@ const handleParse = async () => {
           } else {
             return { found: false, cardName: card.cardName }
           }
-        }))
+        })
       )
       
-      // Separate results
-      cardResults.forEach(result => {
-        if (result.found) {
-          results.push(result.data)
-        } else {
-          notFound.push(result.cardName)
-        }
-      })
-
-      console.log(`Found ${results.length}/${parsedCards.length} cards in shop inventory`)
-      if (notFound.length > 0) {
-        console.warn('Cards not in inventory:', notFound)
-        alert(`Warning: ${notFound.length} cards not found in shop inventory:\n\n${notFound.join('\n')}\n\nThese cards are not available at this shop.`)
+      cardResults.push(...batchResults)
+      
+      // Small delay between batches
+      if (i + BATCH_SIZE < parsedCards.length) {
+        await new Promise(resolve => setTimeout(resolve, 300))
       }
-      
-      setSearchResults(results)
-      
-      // Auto-select cheapest version
-      const autoSelected = {}
-      results.forEach((result, index) => {
-        if (result.cardData.card_sets && result.cardData.card_sets.length > 0) {
-          const cheapest = result.cardData.card_sets.reduce((min, set) => {
-            const price = parseFloat(set.set_price) || 0
-            const minPrice = parseFloat(min.set_price) || 0
-            if (price === 0) return min
-            if (minPrice === 0) return set
-            return price < minPrice ? set : min
-          })
-          autoSelected[index] = cheapest
-        }
-      })
-      setSelectedVersions(autoSelected)
-      
-    } catch (error) {
-      console.error('Error fetching shop inventory:', error)
-      alert('Failed to search shop inventory. Please try again.')
     }
+    
+    // Separate results
+    cardResults.forEach(result => {
+      if (result.found) {
+        results.push(result.data)
+      } else {
+        notFound.push(result.cardName)
+      }
+    })
+
+    console.log(`Found ${results.length}/${parsedCards.length} cards in shop inventory`)
+    if (notFound.length > 0) {
+      console.warn('Cards not in inventory:', notFound)
+      alert(`Warning: ${notFound.length} cards not found in shop inventory:\n\n${notFound.join('\n')}\n\nThese cards are not available at this shop.`)
+    }
+    
+    setSearchResults(results)
+    
+    // Auto-select cheapest version
+    const autoSelected = {}
+    results.forEach((result, index) => {
+      if (result.cardData.card_sets && result.cardData.card_sets.length > 0) {
+        const cheapest = result.cardData.card_sets.reduce((min, set) => {
+          const price = parseFloat(set.set_price) || 0
+          const minPrice = parseFloat(min.set_price) || 0
+          if (price === 0) return min
+          if (minPrice === 0) return set
+          return price < minPrice ? set : min
+        })
+        autoSelected[index] = cheapest
+      }
+    })
+    setSelectedVersions(autoSelected)
+    
+  } catch (error) {
+    console.error('Error fetching shop inventory:', error)
+    alert('Failed to search shop inventory. Please try again.')
   }
+}
 
 // Demo mode - YGOProDeck search (your existing logic)
 async function handleDemoMode(parsedCards) {
