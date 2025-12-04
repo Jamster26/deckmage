@@ -15,23 +15,23 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 function extractCardName(title) {
   let cleaned = title
   
-  // Remove set codes (e.g., "LOB-005", "SDK-001")
-  cleaned = cleaned.replace(/\s*[A-Z]{2,5}-[A-Z]?\d{3,4}\s*/gi, '')
+  // Remove set codes like "LOB-005" but NOT card name hyphens
+  cleaned = cleaned.replace(/\b[A-Z]{2,5}-[A-Z]?\d{3,4}\b/gi, '')
   
-  // Remove conditions (including "Mint")
+  // Remove conditions
   cleaned = cleaned.replace(/\s*-?\s*(Near Mint|Lightly Played|Moderately Played|Heavily Played|Damaged|Mint|NM|LP|MP|HP|DMG)\s*/gi, '')
   
-  // Remove editions
+  // Remove editions  
   cleaned = cleaned.replace(/\s*-?\s*(1st Edition|Limited Edition|Unlimited|1st)\s*/gi, '')
   
-  // Remove rarity (in order from longest to shortest)
+  // Remove rarity
   cleaned = cleaned.replace(/\s*-?\s*(Starlight Rare|Ghost Rare|Ultimate Rare|Ultra Rare|Super Rare|Secret Rare|Prismatic Secret|Quarter Century|Collector's Rare|Rare|Common)\s*/gi, '')
   
-  // Remove any trailing/leading dashes and spaces
-  cleaned = cleaned.replace(/^\s*-\s*|\s*-\s*$/g, '').trim()
+  // Clean up extra spaces and trim
+  cleaned = cleaned.replace(/\s+/g, ' ').trim()
   
-  // Clean up multiple spaces
-  cleaned = cleaned.replace(/\s+/g, ' ')
+  // IMPORTANT: Do NOT remove hyphens from card names!
+  // "Blue-Eyes White Dragon" should stay "Blue-Eyes White Dragon"
   
   return cleaned
 }
@@ -55,16 +55,8 @@ async function fetchCardData(cardName, productTitle = '') {
 
   console.log(`\n🔍 Searching for: "${originalName}" → normalized: "${normalizedInput}"`);
 
-  // Helper to extract result
-  const extractCard = (card) => ({
-    officialName: card.name,
-    image: card.card_images?.[0]?.image_url || card.card_images?.[0]?.image_url_cropped || null,
-    type: card.type,
-    id: card.id
-  });
-
   try {
-    // Step 1: Try exact API match (handles official names perfectly)
+    // Step 1: Try exact API match
     let res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${encodeURIComponent(originalName)}`);
     let json = await res.json();
 
@@ -73,21 +65,35 @@ async function fetchCardData(cardName, productTitle = '') {
       return extractCard(json.data[0]);
     }
 
-    // Step 2: Fuzzy search with fname (their "fuzzy" endpoint)
+    // 🧪 ADD THIS DEBUG BLOCK:
+    console.log(`⚠️ No exact match, trying fuzzy...`);
+    console.log(`   Original: "${originalName}"`);
+    
+    // Step 2: Fuzzy search with fname
     const searchWords = originalName.split(/\s+/).slice(0, 4);
     const fuzzyQuery = searchWords.join(' ');
+    
+    console.log(`   Fuzzy query: "${fuzzyQuery}"`);
 
     res = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(fuzzyQuery)}&num=50&offset=0`);
     json = await res.json();
 
+    console.log(`   API returned: ${json.data?.length || 0} results`);
+    
     if (!json.data?.length) {
-      console.log(`❌ No results even with fuzzy search`);
+      console.log(`❌ YGOProDeck found NOTHING for "${fuzzyQuery}"`);
       return null;
     }
 
+    // Show top 3 results
+    console.log(`   Top 3 from YGOProDeck:`);
+    json.data.slice(0, 3).forEach((card, i) => {
+      console.log(`      ${i+1}. "${card.name}"`);
+    });
+
     const candidates = json.data;
 
-    // Step 3: Score candidates by normalized name match quality
+    // Step 3: Score candidates
     const scored = candidates
       .map(card => {
         const norm = normalizeCardName(card.name);
@@ -108,15 +114,16 @@ async function fetchCardData(cardName, productTitle = '') {
 
     const best = scored[0];
     
+    console.log(`   Best match: "${best.card.name}" (score: ${best.score})`);
+    
     if (best.score >= 80) {
       console.log(`✅ Strong match (${best.score}): "${best.card.name}"`);
       return extractCard(best.card);
     } else if (best.score >= 50) {
-      console.log(`⚠️  Weak match (${best.score}): "${best.card.name}" (from "${originalName}")`);
+      console.log(`⚠️  Weak match (${best.score}): "${best.card.name}"`);
       return extractCard(best.card);
     } else {
-      console.log(`❌ Best weak candidate: "${best.card.name}" (score: ${best.score}) — rejecting`);
-      console.log(`   Top 3: ${scored.slice(0,3).map(s => `"${s.card.name}"`).join(', ')}`);
+      console.log(`❌ Best score too low (${best.score}), rejecting`);
       return null;
     }
 
