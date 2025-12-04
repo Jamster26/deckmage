@@ -13,6 +13,63 @@ function normalizeCardName(name) {
     .replace(/[^a-z0-9]/g, '') // Remove special characters
 }
 
+// Add these helper functions at the top of the file
+function extractSetCode(title, sku) {
+  // Priority 1: Use SKU if it looks like a set code
+  if (sku && /^[A-Z]{2,5}-[A-Z]?\d{3,4}/i.test(sku)) {
+    return sku.match(/([A-Z]{2,5}-[A-Z]?\d{3,4})/i)[1]
+  }
+  
+  // Priority 2: Extract from title
+  const match = title.match(/([A-Z]{2,5}-[A-Z]?\d{3,4})/i)
+  return match ? match[1] : null
+}
+
+function extractRarity(title) {
+  const rarities = [
+    'Starlight Rare', 'Ghost Rare', 'Secret Rare', 
+    'Ultra Rare', 'Super Rare', 'Rare', 'Common',
+    'Quarter Century', 'Collector\'s Rare', 'Prismatic Secret'
+  ]
+  
+  for (const rarity of rarities) {
+    if (title.toLowerCase().includes(rarity.toLowerCase())) {
+      return rarity
+    }
+  }
+  
+  return null
+}
+
+function extractCondition(title) {
+  const conditions = [
+    'Near Mint', 'Lightly Played', 'Moderately Played', 
+    'Heavily Played', 'Damaged',
+    'NM', 'LP', 'MP', 'HP', 'DMG'
+  ]
+  
+  for (const condition of conditions) {
+    if (title.toLowerCase().includes(condition.toLowerCase())) {
+      // Expand abbreviations
+      if (condition === 'NM') return 'Near Mint'
+      if (condition === 'LP') return 'Lightly Played'
+      if (condition === 'MP') return 'Moderately Played'
+      if (condition === 'HP') return 'Heavily Played'
+      if (condition === 'DMG') return 'Damaged'
+      return condition
+    }
+  }
+  
+  return 'Near Mint' // Default assumption
+}
+
+function extractEdition(title) {
+  if (title.toLowerCase().includes('1st edition')) return '1st Edition'
+  if (title.toLowerCase().includes('limited edition')) return 'Limited Edition'
+  if (title.toLowerCase().includes('unlimited')) return 'Unlimited'
+  return null
+}
+
 exports.handler = async (event) => {
   // Enable CORS
   const headers = {
@@ -95,30 +152,27 @@ exports.handler = async (event) => {
       )
 
       if (matchingProducts.length > 0) {
-        // Map products to the format the deck builder expects
-        results[cardName] = matchingProducts.map(product => {
-          // Get the first variant for pricing
-          const variant = product.variants?.[0] || {}
-          
-          return {
-            productId: product.shopify_product_id,
-            variantId: variant.id,
-            title: product.title,
-                matchedCardName: product.matched_card_name,  // ← ADD THIS LINE
-
-            price: parseFloat(variant.price) || 0,
-            compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
-            sku: variant.sku || '',
-            available: variant.inventory_quantity > 0,
-            inventoryQuantity: variant.inventory_quantity || 0,
-            image: product.images?.[0]?.src || null,
-            // Extract metadata from title or stored fields
-            setCode: product.set_code || extractSetCode(product.title),
-            rarity: product.rarity || extractRarity(product.title),
-            condition: product.condition || 'Near Mint',
-            edition: product.edition || ''
-          }
-        })
+       results[cardName] = matchingProducts.map(product => {
+  const variant = product.variants?.[0] || {}
+  
+  return {
+    productId: product.shopify_product_id,
+    variantId: variant.id,
+    title: product.title,
+    matchedCardName: product.matched_card_name,
+    price: parseFloat(variant.price) || 0,
+    compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
+    sku: variant.sku || '',
+    available: variant.inventory_quantity > 0,
+    inventoryQuantity: variant.inventory_quantity || 0,
+    image: product.images?.[0]?.src || null,
+    // Robust extraction from multiple sources
+    setCode: product.set_code || extractSetCode(product.title, variant.sku) || 'N/A',
+    rarity: product.rarity || extractRarity(product.title) || 'Common',
+    condition: product.condition || extractCondition(product.title),
+    edition: product.edition || extractEdition(product.title) || ''
+  }
+})
       } else {
         results[cardName] = []
       }
