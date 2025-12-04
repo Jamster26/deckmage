@@ -53,16 +53,7 @@ async function fetchCardData(cardName, productTitle) {
       )
       data = await response.json()
     }
-    
-    // If still failing, try original title (cleaned)
-    if (data.error && productTitle !== cardName) {
-      const cleanTitle = productTitle.split('-')[0].trim() // Remove everything after first hyphen
-      console.log(`⚠️ Trying cleaned title "${cleanTitle}"...`)
-      response = await fetch(
-        `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(cleanTitle)}`
-      )
-      data = await response.json()
-    }
+  
     
     if (data.data && data.data[0]) {
       const card = data.data[0]
