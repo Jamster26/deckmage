@@ -3,7 +3,7 @@ import DeckListInput from './DeckListInput'
 import Login from './pages/login'
 import Signup from './pages/signup'
 import Dashboard from './pages/dashboard'
-import Products from './pages/products'  // ← Add this
+import Products from './pages/products'
 
 import { useEffect, useState } from 'react'
 import ShopifyCallback from './pages/ShopifyCallback'
@@ -109,7 +109,7 @@ function DeckBuilder() {
             color: currentTheme.text,
             margin: '0 0 20px 0'
           }}>
-            YuGiOh Deck Builder
+            DeckMage - Yu-Gi-Oh! Deck Builder
           </h1>
           <p style={{ 
             textAlign: 'center', 
@@ -117,18 +117,19 @@ function DeckBuilder() {
             opacity: 0.7,
             fontSize: '0.9rem',
             maxWidth: '800px',
-            margin: '0 auto 30px auto'
+            margin: '0 auto 30px auto',
+            lineHeight: '1.6'
           }}>
-            Yu-Gi-Oh! © Konami. Card data provided by{' '}
+            Yu-Gi-Oh! © Konami Digital Entertainment. Card data sourced from{' '}
             <a 
               href="https://ygoprodeck.com" 
               target="_blank" 
               rel="noopener noreferrer" 
-              style={{ color: config.primaryColor }}
+              style={{ color: config.primaryColor, textDecoration: 'underline' }}
             >
-              YGOPRODeck API
+              YGOProDeck
             </a>
-            . This tool is unofficial and not affiliated with or endorsed by Konami.
+            . DeckMage is an independent third-party tool and is not affiliated with, endorsed by, or sponsored by Konami.
           </p>
         </>
       )}
@@ -152,10 +153,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/products" element={<Products />} />  {/* ← Add this */}
-
+        <Route path="/products" element={<Products />} />
         <Route path="/auth/shopify/callback" element={<ShopifyCallback />} />
-
       </Routes>
     </BrowserRouter>
   )
