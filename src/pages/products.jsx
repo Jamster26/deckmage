@@ -40,7 +40,7 @@ async function fetchProducts(userId) {
   try {
     // Look up in 'stores' table, not 'connected_stores'
     const { data: store, error: storeError } = await supabase
-      .from('stores')  // ← Changed from 'connected_stores'
+      .from('connected_stores')  // ← Changed from 'connected_stores'
       .select('id')
       .eq('user_id', userId)
       .single()
