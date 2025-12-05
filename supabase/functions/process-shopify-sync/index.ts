@@ -77,54 +77,37 @@ serve(async (req) => {
     const data = await response.json()
     const products = data.products || []
 
-    console.log(`✅ Fetched ${products.length} products`)
+    console.log(`✅ Fetched ${products.length} products, inserting into database...`)
 
-    // Process products
+    // Build batch insert array (MUCH faster than individual upserts)
+    const productsToInsert = []
+    
     for (const product of products) {
       for (const variant of product.variants) {
-        const normalizedTitle = normalizeCardName(product.title)
-
-        // Try to find matching card
-        const { data: matchingCards } = await supabase
-          .from('yugioh_cards')
-          .select('id, name')
-          .ilike('name', `%${normalizedTitle}%`)
-          .limit(5)
-
-        let bestMatch = null
-        if (matchingCards && matchingCards.length > 0) {
-          bestMatch = matchingCards.reduce((best: any, card: any) => {
-            const cardNorm = normalizeCardName(card.name)
-            const similarity = calculateSimilarity(normalizedTitle, cardNorm)
-            return similarity > (best?.similarity || 0) 
-              ? { ...card, similarity } 
-              : best
-          }, null)
-
-          if (bestMatch && bestMatch.similarity < 0.6) {
-            bestMatch = null
-          }
-        }
-
-        // Upsert product
-        await supabase
-          .from('products')
-          .upsert({
-            store_id: store.id,
-            shopify_product_id: product.id.toString(),
-            shopify_variant_id: variant.id.toString(),
-            title: product.title,
-            variant_title: variant.title !== 'Default Title' ? variant.title : null,
-            price: parseFloat(variant.price),
-            inventory_quantity: variant.inventory_quantity || 0,
-            sku: variant.sku || null,
-            matched_card_id: bestMatch?.id || null,
-            matched_card_name: bestMatch?.name || null,
-            match_confidence: bestMatch?.similarity || null
-          }, {
-            onConflict: 'store_id,shopify_variant_id'
-          })
+        productsToInsert.push({
+          store_id: store.id,
+          shopify_product_id: product.id.toString(),
+          shopify_variant_id: variant.id.toString(),
+          title: product.title,
+          variant_title: variant.title !== 'Default Title' ? variant.title : null,
+          price: parseFloat(variant.price),
+          inventory_quantity: variant.inventory_quantity || 0,
+          sku: variant.sku || null,
+          matched_card_id: null,  // We'll match later
+          matched_card_name: null,
+          match_confidence: null
+        })
       }
+    }
+
+    // Single batch upsert - MUCH more efficient
+    if (productsToInsert.length > 0) {
+      await supabase
+        .from('products')
+        .upsert(productsToInsert, { 
+          onConflict: 'store_id,shopify_variant_id',
+          ignoreDuplicates: false 
+        })
     }
 
     const newProcessed = job.processed_products + products.length
@@ -177,51 +160,3 @@ serve(async (req) => {
     )
   }
 })
-
-function normalizeCardName(name: string): string {
-  if (!name) return ''
-  return name
-    .toLowerCase()
-    .replace(/[''"]/g, '')
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function calculateSimilarity(str1: string, str2: string): number {
-  const longer = str1.length > str2.length ? str1 : str2
-  const shorter = str1.length > str2.length ? str2 : str1
-  
-  if (longer.length === 0) return 1.0
-  
-  const editDistance = levenshteinDistance(longer, shorter)
-  return (longer.length - editDistance) / longer.length
-}
-
-function levenshteinDistance(str1: string, str2: string): number {
-  const matrix: number[][] = []
-
-  for (let i = 0; i <= str2.length; i++) {
-    matrix[i] = [i]
-  }
-
-  for (let j = 0; j <= str1.length; j++) {
-    matrix[0][j] = j
-  }
-
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1]
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        )
-      }
-    }
-  }
-
-  return matrix[str2.length][str1.length]
-}
