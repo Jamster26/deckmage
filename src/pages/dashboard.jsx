@@ -116,7 +116,10 @@ const [csvFile, setCSVFile] = useState(null)
     }
   }
 
-  const handleSyncProducts = async () => {
+ const [syncJob, setSyncJob] = useState(null)
+const [syncPolling, setSyncPolling] = useState(null)
+
+const handleSyncProducts = async () => {
   setSyncing(true)
   
   try {
@@ -134,23 +137,82 @@ const [csvFile, setCSVFile] = useState(null)
 
     if (!response.ok) {
       const errorData = await response.json()
-      throw new Error(errorData.error || 'Failed to sync products')
+      throw new Error(errorData.error || 'Failed to start sync')
     }
 
     const data = await response.json()
     
-    alert(`✅ Successfully synced ${data.productsCount} products!`)
+    console.log('✅ Sync job created:', data.jobId)
     
-    // Reload product count
-    loadProducts(connectedStore.id)
+    // Start polling for progress
+    startSyncPolling(data.jobId)
     
   } catch (error) {
     console.error('Sync error:', error)
-    alert(`❌ Error syncing products: ${error.message}`)
-  } finally {
+    alert(`❌ Error starting sync: ${error.message}`)
     setSyncing(false)
   }
 }
+
+const startSyncPolling = (jobId) => {
+  console.log('🔄 Starting progress polling...')
+  
+  // Poll every 2 seconds
+  const interval = setInterval(async () => {
+    try {
+      const { data: job, error } = await supabase
+        .from('sync_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single()
+      
+      if (error) {
+        console.error('Polling error:', error)
+        return
+      }
+      
+      setSyncJob(job)
+      
+      console.log(`📊 Progress: ${job.processed_products}/${job.total_products} (${job.status})`)
+      
+      // Check if complete or failed
+      if (job.status === 'completed') {
+        clearInterval(interval)
+        setSyncPolling(null)
+        setSyncing(false)
+        
+        alert(`🎉 Sync complete! Processed ${job.processed_products} products!`)
+        
+        // Reload products
+        loadProducts(connectedStore.id)
+        setSyncJob(null)
+        
+      } else if (job.status === 'failed') {
+        clearInterval(interval)
+        setSyncPolling(null)
+        setSyncing(false)
+        
+        alert(`❌ Sync failed: ${job.error_message}`)
+        setSyncJob(null)
+      }
+      
+    } catch (error) {
+      console.error('Polling error:', error)
+    }
+  }, 2000) // Poll every 2 seconds
+  
+  setSyncPolling(interval)
+}
+
+// Cleanup polling on unmount
+useEffect(() => {
+  return () => {
+    if (syncPolling) {
+      clearInterval(syncPolling)
+    }
+  }
+}, [syncPolling])
+
 
 const handleCSVUpload = async (file) => {
   if (!file) return
@@ -383,7 +445,7 @@ const handleCSVUpload = async (file) => {
           </div>
         </div>
 
-        {/* Quick Actions */}
+{/* Quick Actions */}
         <div style={{
           background: '#1a1a2e',
           border: '1px solid #2d2d44',
@@ -465,65 +527,111 @@ const handleCSVUpload = async (file) => {
           )}
           
           {connectedStore && (
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <button 
-  onClick={handleSyncProducts}
-  disabled={syncing}
-  style={{
-    padding: '12px 24px',
-    background: syncing ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#0a0a1f',
-    fontWeight: 'bold',
-    cursor: syncing ? 'not-allowed' : 'pointer',
-    opacity: syncing ? 0.6 : 1
-  }}
->
-  {syncing ? 'Syncing...' : 'Sync Products'}
-</button>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', flexDirection: 'column' }}>
+              
+              {/* Sync Progress Bar */}
+              {syncing && syncJob && (
+                <div style={{
+                  background: '#0a0a1f',
+                  border: '2px solid #00ff9d',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  marginBottom: '16px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <span style={{ fontWeight: 'bold', color: '#00ff9d' }}>
+                      {syncJob.status === 'processing' ? '⏳ Syncing...' : '⏰ Starting...'}
+                    </span>
+                    <span style={{ color: '#fff' }}>
+                      {syncJob.processed_products} / {syncJob.total_products} products
+                    </span>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div style={{
+                    width: '100%',
+                    height: '12px',
+                    background: '#1a1a2e',
+                    borderRadius: '6px',
+                    overflow: 'hidden',
+                    marginBottom: '8px'
+                  }}>
+                    <div style={{
+                      width: `${(syncJob.processed_products / syncJob.total_products) * 100}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #00ff9d, #2a9d8f)',
+                      transition: 'width 0.5s ease'
+                    }} />
+                  </div>
+                  
+                  <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
+                    {Math.round((syncJob.processed_products / syncJob.total_products) * 100)}% complete
+                  </p>
+                </div>
+              )}
+              
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                <button 
+                  onClick={handleSyncProducts}
+                  disabled={syncing}
+                  style={{
+                    padding: '12px 24px',
+                    background: syncing ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#0a0a1f',
+                    fontWeight: 'bold',
+                    cursor: syncing ? 'not-allowed' : 'pointer',
+                    opacity: syncing ? 0.6 : 1
+                  }}
+                >
+                  {syncing ? 'Syncing...' : 'Sync Products'}
+                </button>
 
-   {/* ADD THIS CSV BUTTON */}
-    <button
-      onClick={() => setShowCSVUpload(true)}
-      style={{
-        padding: '12px 24px',
-        background: 'transparent',
-        border: '1px solid #00ff9d',
-        borderRadius: '8px',
-        color: '#00ff9d',
-        fontWeight: 'bold',
-        cursor: 'pointer'
-      }}
-    >
-      📤 Upload CSV
-    </button>
+                {/* CSV Upload Button */}
+                <button
+                  onClick={() => setShowCSVUpload(true)}
+                  style={{
+                    padding: '12px 24px',
+                    background: 'transparent',
+                    border: '1px solid #00ff9d',
+                    borderRadius: '8px',
+                    color: '#00ff9d',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  📤 Upload CSV
+                </button>
 
-              <button style={{
-                padding: '12px 24px',
-                background: 'transparent',
-                border: '1px solid #2d2d44',
-                borderRadius: '8px',
-                color: '#fff',
-                cursor: 'pointer'
-              }}>
-                View Analytics
-              </button>
-              <button style={{
-                padding: '12px 24px',
-                background: 'transparent',
-                border: '1px solid #2d2d44',
-                borderRadius: '8px',
-                color: '#fff',
-                cursor: 'pointer'
-              }}>
-                Get Embed Code
-              </button>
+                <button style={{
+                  padding: '12px 24px',
+                  background: 'transparent',
+                  border: '1px solid #2d2d44',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}>
+                  View Analytics
+                </button>
+                
+                <button style={{
+                  padding: '12px 24px',
+                  background: 'transparent',
+                  border: '1px solid #2d2d44',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}>
+                  Get Embed Code
+                </button>
+              </div>
             </div>
           )}
-        </div>
-     
-     {/* CSV Upload Modal */}
+          
+        </div>  {/* Closes "Quick Actions" div */}
+        
+        {/* CSV Upload Modal */}
         {showCSVUpload && (
           <div style={{
             position: 'fixed',
@@ -669,7 +777,7 @@ const handleCSVUpload = async (file) => {
           </div>
         )}
 
-    {/* 🟢 PASTE THE ENTIRE PRODUCTS LIST CODE RIGHT HERE 🟢 */}
+        
         {connectedStore && products.length > 0 && (
           <div style={{
             background: '#1a1a2e',
