@@ -41,9 +41,8 @@ async function fetchProducts(userId) {
   setLoading(true)
   
   try {
-    // Look up in 'stores' table, not 'connected_stores'
     const { data: store, error: storeError } = await supabase
-      .from('connected_stores')  // ← Changed from 'connected_stores'
+      .from('connected_stores')
       .select('id')
       .eq('user_id', userId)
       .single()
@@ -57,10 +56,15 @@ async function fetchProducts(userId) {
 
     console.log('Found store:', store.id)
 
-    // Get products using store_id
+    // Get products WITH card images from yugioh_cards table
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        card_image:yugioh_cards!products_matched_card_id_fkey (
+          image_url_small
+        )
+      `)
       .eq('store_id', store.id)
       .order('title', { ascending: true })
 
@@ -506,33 +510,49 @@ async function handleMatchAll() {
                       {/* Product Info */}
                       <td style={{ padding: '16px' }}>
                         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                          {product.images && product.images[0] ? (
-                            <img
-                              src={product.images[0].src}
-                              alt={product.title}
-                              style={{
-                                width: '50px',
-                                height: '50px',
-                                objectFit: 'cover',
-                                borderRadius: '8px',
-                                border: '1px solid #2d2d44'
-                              }}
-                            />
-                          ) : (
-                            <div style={{
-                              width: '50px',
-                              height: '50px',
-                              background: '#0a0a1f',
-                              borderRadius: '8px',
-                              border: '1px solid #2d2d44',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '1.5rem'
-                            }}>
-                              Card
-                            </div>
-                          )}
+                   {/* NEW CODE - Product Image with Card Fallback */}
+{product.images && product.images[0] ? (
+  // Use Shopify image if available
+  <img
+    src={product.images[0].src}
+    alt={product.title}
+    style={{
+      width: '50px',
+      height: '50px',
+      objectFit: 'cover',
+      borderRadius: '8px',
+      border: '1px solid #2d2d44'
+    }}
+  />
+) : product.card_image?.image_url_small ? (
+  // Fallback to Yu-Gi-Oh card image from database
+  <img
+    src={product.card_image.image_url_small}
+    alt={product.title}
+    style={{
+      width: '50px',
+      height: '73px',  // Card aspect ratio
+      objectFit: 'cover',
+      borderRadius: '4px',
+      border: '1px solid #2d2d44'
+    }}
+  />
+) : (
+  // No image available - show placeholder
+  <div style={{
+    width: '50px',
+    height: '50px',
+    background: '#0a0a1f',
+    borderRadius: '8px',
+    border: '1px solid #2d2d44',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '1.5rem'
+  }}>
+    🃏
+  </div>
+)}
                           <div>
                             <div style={{ color: '#fff', fontWeight: '500', marginBottom: '4px' }}>
                               {product.title}
