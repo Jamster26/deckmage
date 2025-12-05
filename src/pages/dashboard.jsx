@@ -221,7 +221,7 @@ const startSyncPolling = (jobId) => {
         alert(`🎉 Sync complete! Processed ${job.processed_products} products!`)
         
         // Reload products
-        loadProducts(connectedStore.id)
+loadProducts(job.store_id)  // ✅ Get it from the job instead
         setSyncJob(null)
         
       } else if (job.status === 'failed') {
