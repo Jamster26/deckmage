@@ -302,6 +302,21 @@ const handleCSVUpload = async (file) => {
           Your professional deck builder dashboard
         </p>
 
+        {/* 🔥 ADD THIS DEBUG BANNER */}
+<div style={{
+  background: 'yellow',
+  color: 'black',
+  padding: '20px',
+  marginBottom: '20px',
+  borderRadius: '8px',
+  fontFamily: 'monospace'
+}}>
+  <strong>DEBUG INFO:</strong><br/>
+  connectedStore: {connectedStore ? '✅ EXISTS' : '❌ NULL'}<br/>
+  shop_domain: {connectedStore?.shop_domain || 'none'}<br/>
+  store_id: {connectedStore?.id || 'none'}
+</div>
+
         {/* Connected Store Banner */}
         {connectedStore && (
           <div style={{
