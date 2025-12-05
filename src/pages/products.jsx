@@ -16,6 +16,10 @@ function Products() {
     const [autoMatching, setAutoMatching] = useState(false)  // ← Add this
   const [matchProgress, setMatchProgress] = useState({ current: 0, total: 0 })  // ← Add this
 
+  const [currentPage, setCurrentPage] = useState(1)
+const [itemsPerPage] = useState(50)  // Show 50 products per page
+
+
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -95,6 +99,18 @@ async function fetchProducts(userId) {
 
   const matchedCount = products.filter(p => p.matched_card_name).length
   const unmatchedCount = products.length - matchedCount
+
+  // Pagination
+const totalPages = Math.ceil(filteredProducts.length / itemsPerPage)
+const startIndex = (currentPage - 1) * itemsPerPage
+const endIndex = startIndex + itemsPerPage
+const paginatedProducts = filteredProducts.slice(startIndex, endIndex)
+
+// Reset to page 1 when filters change
+useEffect(() => {
+  setCurrentPage(1)
+}, [searchQuery, filterStatus])
+
 
   if (loading) {
     return (
@@ -473,7 +489,7 @@ async function handleMatchAll() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map(product => {
+{paginatedProducts.map(product => {
                   const prices = product.variants?.map(v => parseFloat(v.price)) || []
                   const price = prices.length > 0 ? Math.min(...prices) : null
 
@@ -630,6 +646,61 @@ async function handleMatchAll() {
           )}
         </div>
 
+{/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{
+            background: '#1a1a2e',
+            border: '1px solid #2d2d44',
+            borderRadius: '12px',
+            padding: '20px',
+            marginTop: '20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div style={{ color: '#888', fontSize: '0.9rem' }}>
+              Showing {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} of {filteredProducts.length} products
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #2d2d44',
+                  background: currentPage === 1 ? '#0a0a1f' : '#1a1a2e',
+                  color: currentPage === 1 ? '#555' : '#fff',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                ← Previous
+              </button>
+              
+              <div style={{ color: '#fff', fontSize: '0.9rem' }}>
+                Page {currentPage} of {totalPages}
+              </div>
+              
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #2d2d44',
+                  background: currentPage === totalPages ? '#0a0a1f' : '#1a1a2e',
+                  color: currentPage === totalPages ? '#555' : '#fff',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
     {matchModalOpen && selectedProduct && (
