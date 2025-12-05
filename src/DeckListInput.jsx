@@ -338,11 +338,12 @@ async function handleDemoMode(parsedCards) {
   }
 
 return (
-    <div className="deck-builder-container" data-size={size} style={{
-      maxWidth: layout.maxWidth,
-      margin: '0 auto',
-      padding: layout.padding
-    }}>
+  <div className="deck-builder-container" data-size={size} style={{
+    maxWidth: '100%',           // ← Always full width
+    margin: '0',                // ← No centering
+    padding: '40px 60px',       // ← Consistent padding like BigOrbitCards
+    minHeight: '100vh'          // ← Fill viewport naturally
+  }}>
 <div className="input-section" style={{
         background: theme.cardBg,
         borderColor: theme.border

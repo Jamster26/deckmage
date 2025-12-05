@@ -91,15 +91,18 @@ function DeckBuilder() {
 
   const currentLayout = layouts[config.size]
 
-  return (
-    <div style={{
-      background: currentTheme.background,
-      color: currentTheme.text,
-      fontFamily: config.fontFamily,
-      minHeight: '100vh',
-      overflowY: 'auto',
-      overflowX: 'hidden'
-    }}>
+return (
+  <div style={{
+    background: currentTheme.background,
+    color: currentTheme.text,
+    fontFamily: config.fontFamily,
+    minHeight: 'auto',  // ← Let content determine height
+    padding: '0',       // ← No container padding
+    margin: '0',        // ← No margins
+    overflowY: 'visible',
+    overflowX: 'hidden',
+    width: '100%'       // ← Full width
+  }}>
       {/* Only show header if NOT embedded */}
       {!config.embed && (
         <>

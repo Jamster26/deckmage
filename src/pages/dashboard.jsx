@@ -46,22 +46,15 @@ const [csvFile, setCSVFile] = useState(null)
   }, [navigate])
 
   const loadConnectedStore = async (userId) => {
-  console.log('🔍 Loading connected store for user:', userId)
-  
   const { data, error } = await supabase
     .from('connected_stores')
     .select('*')
     .eq('user_id', userId)
     .single()
 
-  console.log('📦 Query result:', { data, error })
-
   if (data && !error) {
-    console.log('✅ Setting connectedStore:', data)
     setConnectedStore(data)
     loadProducts(data.id)
-  } else {
-    console.log('❌ No store found or error:', error)
   }
 }
 
@@ -302,20 +295,7 @@ const handleCSVUpload = async (file) => {
           Your professional deck builder dashboard
         </p>
 
-        {/* 🔥 ADD THIS DEBUG BANNER */}
-<div style={{
-  background: 'yellow',
-  color: 'black',
-  padding: '20px',
-  marginBottom: '20px',
-  borderRadius: '8px',
-  fontFamily: 'monospace'
-}}>
-  <strong>DEBUG INFO:</strong><br/>
-  connectedStore: {connectedStore ? '✅ EXISTS' : '❌ NULL'}<br/>
-  shop_domain: {connectedStore?.shop_domain || 'none'}<br/>
-  store_id: {connectedStore?.id || 'none'}
-</div>
+      
 
         {/* Connected Store Banner */}
         {connectedStore && (
