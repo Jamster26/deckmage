@@ -159,41 +159,38 @@ const response = await fetch('/.netlify/functions/start-sync', {
 const startSyncPolling = (jobId) => {
   console.log('🔄 Starting batch processing...')
   
-  // Function to process next batch
-  const processNextBatch = async () => {
-    try {
-      console.log('📦 Requesting next batch...')
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-shopify-sync`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({ jobId })
-        }
-      )
+ const processNextBatch = async () => {
+  try {
+    console.log('📦 Requesting next batch...')
+    
+    const response = await fetch('/.netlify/functions/start-sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        jobId,
+        processNextBatch: true 
+      })
+    })
 
-      if (!response.ok) {
-        console.error('Batch processing error:', response.status)
-        return
-      }
-
-      const result = await response.json()
-      console.log('✅ Batch result:', result)
-
-      // If not done, process next batch after a short delay
-      if (!result.done && result.hasMore) {
-        setTimeout(() => processNextBatch(), 1000) // 1 second delay between batches
-      }
-
-    } catch (error) {
-      console.error('Batch processing error:', error)
+    if (!response.ok) {
+      console.error('Batch processing error:', response.status)
+      return
     }
-  }
 
+    const result = await response.json()
+    console.log('✅ Batch result:', result)
+
+    // If not done, process next batch after a short delay
+    if (!result.done && result.hasMore) {
+      setTimeout(() => processNextBatch(), 1000)
+    }
+
+  } catch (error) {
+    console.error('Batch processing error:', error)
+  }
+}
   // Start processing batches
   processNextBatch()
   
