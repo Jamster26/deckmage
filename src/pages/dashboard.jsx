@@ -55,6 +55,8 @@ const [csvFile, setCSVFile] = useState(null)
   if (data && !error) {
     setConnectedStore(data)
     loadProducts(data.id)
+        checkForActiveSyncJob(data.id)  // ← Add this line
+
   }
 }
 
@@ -213,6 +215,33 @@ useEffect(() => {
   }
 }, [syncPolling])
 
+const checkForActiveSyncJob = async (storeId) => {
+  try {
+    const { data: activeJob, error } = await supabase
+      .from('sync_jobs')
+      .select('*')
+      .eq('store_id', storeId)
+      .in('status', ['pending', 'processing'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    
+    if (error && error.code !== 'PGRST116') {
+      // PGRST116 = no rows found, which is fine
+      console.error('Error checking for active jobs:', error)
+      return
+    }
+    
+    if (activeJob) {
+      console.log('📊 Found active sync job, resuming progress tracking...')
+      setSyncJob(activeJob)
+      setSyncing(true)
+      startSyncPolling(activeJob.id)
+    }
+  } catch (error) {
+    console.error('Error checking for active sync:', error)
+  }
+}
 
 const handleCSVUpload = async (file) => {
   if (!file) return
