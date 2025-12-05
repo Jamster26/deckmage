@@ -13,6 +13,11 @@ function Dashboard() {
   const navigate = useNavigate()
   const [syncing, setSyncing] = useState(false)
 const [productCount, setProductCount] = useState(0)
+// Add after the existing state declarations:
+const [showCSVUpload, setShowCSVUpload] = useState(false)
+const [uploading, setUploading] = useState(false)
+const [uploadProgress, setUploadProgress] = useState('')
+const [csvFile, setCSVFile] = useState(null)
   
 
   useEffect(() => {
@@ -21,6 +26,18 @@ const [productCount, setProductCount] = useState(0)
       if (session) {
         setUser(session.user)
         loadConnectedStore(session.user.id)
+
+          // 🆕 CHECK FOR SUCCESS FLAGS FROM OAUTH
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('connected') === 'true' && params.get('synced') === 'true') {
+        // Show success message
+        setTimeout(() => {
+          alert('✅ Store connected and products synced successfully!')
+          // Clear URL params
+          window.history.replaceState({}, '', '/dashboard')
+        }, 500)
+      }
+      
       } else {
         navigate('/login')
       }
@@ -132,6 +149,86 @@ loadProducts(data.id)
     alert(`❌ Error syncing products: ${error.message}`)
   } finally {
     setSyncing(false)
+  }
+}
+
+const handleCSVUpload = async (file) => {
+  if (!file) return
+  
+  setUploading(true)
+  setUploadProgress('Reading CSV file...')
+  
+  try {
+    // Read CSV file
+    const text = await file.text()
+    const lines = text.split('\n').filter(line => line.trim())
+    
+    if (lines.length < 2) {
+      alert('CSV file is empty or invalid')
+      setUploading(false)
+      return
+    }
+    
+    setUploadProgress(`Parsing ${lines.length - 1} products...`)
+    
+    // Parse CSV (simple parsing - assumes comma-separated)
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
+    const products = []
+    
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''))
+      const product = {}
+      
+      headers.forEach((header, index) => {
+        product[header] = values[index] || ''
+      })
+      
+      if (product.title || product.name) {
+        products.push(product)
+      }
+    }
+    
+    console.log(`Parsed ${products.length} products from CSV`)
+    setUploadProgress(`Uploading ${products.length} products...`)
+    
+    // Upload to backend
+    const response = await fetch('/.netlify/functions/upload-csv', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        storeId: connectedStore.id,
+        products: products
+      })
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Upload failed')
+    }
+    
+    const result = await response.json()
+    
+    setUploadProgress('Matching cards to database...')
+    
+    // Wait a moment for processing
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    
+    alert(`✅ Successfully uploaded ${result.count} products!`)
+    
+    // Reload products
+    loadProducts(connectedStore.id)
+    
+    setShowCSVUpload(false)
+    setCSVFile(null)
+    
+  } catch (error) {
+    console.error('CSV upload error:', error)
+    alert(`❌ Upload failed: ${error.message}`)
+  } finally {
+    setUploading(false)
+    setUploadProgress('')
   }
 }
 
@@ -383,6 +480,23 @@ loadProducts(data.id)
 >
   {syncing ? 'Syncing...' : 'Sync Products'}
 </button>
+
+   {/* ADD THIS CSV BUTTON */}
+    <button
+      onClick={() => setShowCSVUpload(true)}
+      style={{
+        padding: '12px 24px',
+        background: 'transparent',
+        border: '1px solid #00ff9d',
+        borderRadius: '8px',
+        color: '#00ff9d',
+        fontWeight: 'bold',
+        cursor: 'pointer'
+      }}
+    >
+      📤 Upload CSV
+    </button>
+    
               <button style={{
                 padding: '12px 24px',
                 background: 'transparent',
@@ -407,6 +521,151 @@ loadProducts(data.id)
           )}
         </div>
      
+     {/* CSV Upload Modal */}
+        {showCSVUpload && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}>
+            <div style={{
+              background: '#1a1a2e',
+              border: '1px solid #2d2d44',
+              borderRadius: '16px',
+              padding: '32px',
+              maxWidth: '600px',
+              width: '100%'
+            }}>
+              <h3 style={{ fontSize: '1.5rem', marginBottom: '20px' }}>
+                Upload Products CSV
+              </h3>
+              
+              {!uploading && (
+                <>
+                  <div style={{
+                    border: '2px dashed #2d2d44',
+                    borderRadius: '12px',
+                    padding: '40px',
+                    textAlign: 'center',
+                    marginBottom: '20px',
+                    background: '#0a0a1f'
+                  }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📄</div>
+                    <p style={{ color: '#888', marginBottom: '16px' }}>
+                      Drag and drop your CSV file here, or click to browse
+                    </p>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => setCSVFile(e.target.files[0])}
+                      style={{
+                        padding: '12px 24px',
+                        background: 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: '#0a0a1f',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    />
+                    {csvFile && (
+                      <p style={{ color: '#00ff9d', marginTop: '16px' }}>
+                        ✓ {csvFile.name} selected
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div style={{
+                    background: '#0a0a1f',
+                    border: '1px solid #2d2d44',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginBottom: '20px'
+                  }}>
+                    <h4 style={{ fontSize: '0.9rem', marginBottom: '8px', color: '#00ff9d' }}>
+                      📋 CSV Format Required:
+                    </h4>
+                    <ul style={{ color: '#888', fontSize: '0.85rem', paddingLeft: '20px' }}>
+                      <li>Must include: <strong>title</strong> (or name)</li>
+                      <li>Should include: <strong>price, quantity</strong> (or stock)</li>
+                      <li>Optional: <strong>sku, image_url, vendor</strong></li>
+                    </ul>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => {
+                        setShowCSVUpload(false)
+                        setCSVFile(null)
+                      }}
+                      style={{
+                        padding: '12px 24px',
+                        background: 'transparent',
+                        border: '1px solid #2d2d44',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => csvFile && handleCSVUpload(csvFile)}
+                      disabled={!csvFile}
+                      style={{
+                        padding: '12px 24px',
+                        background: !csvFile ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: '#0a0a1f',
+                        fontWeight: 'bold',
+                        cursor: !csvFile ? 'not-allowed' : 'pointer',
+                        opacity: !csvFile ? 0.6 : 1
+                      }}
+                    >
+                      Upload Products
+                    </button>
+                  </div>
+                </>
+              )}
+              
+              {uploading && (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '20px' }}>⏳</div>
+                  <h4 style={{ fontSize: '1.2rem', marginBottom: '16px' }}>
+                    {uploadProgress}
+                  </h4>
+                  <div style={{
+                    width: '100%',
+                    height: '8px',
+                    background: '#0a0a1f',
+                    borderRadius: '4px',
+                    overflow: 'hidden',
+                    marginTop: '20px'
+                  }}>
+                    <div style={{
+                      width: '100%',
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #00ff9d, #2a9d8f)',
+                      animation: 'pulse 1.5s infinite'
+                    }} />
+                  </div>
+                  <p style={{ color: '#888', fontSize: '0.85rem', marginTop: '16px' }}>
+                    Please don't close this window...
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
     {/* 🟢 PASTE THE ENTIRE PRODUCTS LIST CODE RIGHT HERE 🟢 */}
         {connectedStore && products.length > 0 && (
