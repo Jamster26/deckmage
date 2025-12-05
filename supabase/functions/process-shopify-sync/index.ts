@@ -18,7 +18,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    console.log(`🚀 Starting background sync for job ${jobId}`)
+    console.log(`🚀 Processing batch for job ${jobId}`)
 
     // Get job and store details
     const { data: job, error: jobError } = await supabase
@@ -38,132 +38,134 @@ serve(async (req) => {
       throw new Error('Job not found')
     }
 
-    const store = job.connected_stores
-    const BATCH_SIZE = 250
-    let cursor = null
-    let processedCount = 0
-
-    // Update to processing
-    await supabase
-      .from('sync_jobs')
-      .update({ status: 'processing' })
-      .eq('id', jobId)
-
-    // Process all products
-    while (processedCount < job.total_products) {
-      console.log(`📦 Fetching batch (${processedCount}/${job.total_products})...`)
-
-      let url = `https://${store.shop_domain}/admin/api/2024-01/products.json?limit=${BATCH_SIZE}`
-      if (cursor) url += `&page_info=${cursor}`
-
-      const response = await fetch(url, {
-        headers: {
-          'X-Shopify-Access-Token': store.access_token,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error(`Shopify API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-      const products = data.products || []
-
-      console.log(`✅ Fetched ${products.length} products`)
-
-      // Process products
-      for (const product of products) {
-        for (const variant of product.variants) {
-          const normalizedTitle = normalizeCardName(product.title)
-
-          // Try to find matching card
-          const { data: matchingCards } = await supabase
-            .from('yugioh_cards')
-            .select('id, name')
-            .ilike('name', `%${normalizedTitle}%`)
-            .limit(5)
-
-          let bestMatch = null
-          if (matchingCards && matchingCards.length > 0) {
-            bestMatch = matchingCards.reduce((best: any, card: any) => {
-              const cardNorm = normalizeCardName(card.name)
-              const similarity = calculateSimilarity(normalizedTitle, cardNorm)
-              return similarity > (best?.similarity || 0) 
-                ? { ...card, similarity } 
-                : best
-            }, null)
-
-            if (bestMatch && bestMatch.similarity < 0.6) {
-              bestMatch = null
-            }
-          }
-
-          // Upsert product
-          await supabase
-            .from('products')
-            .upsert({
-              store_id: store.id,
-              shopify_product_id: product.id.toString(),
-              shopify_variant_id: variant.id.toString(),
-              title: product.title,
-              variant_title: variant.title !== 'Default Title' ? variant.title : null,
-              price: parseFloat(variant.price),
-              inventory_quantity: variant.inventory_quantity || 0,
-              sku: variant.sku || null,
-              matched_card_id: bestMatch?.id || null,
-              matched_card_name: bestMatch?.name || null,
-              match_confidence: bestMatch?.similarity || null
-            }, {
-              onConflict: 'store_id,shopify_variant_id'
-            })
-        }
-      }
-
-      processedCount += products.length
-
-      // Update progress
-      await supabase
-        .from('sync_jobs')
-        .update({
-          processed_products: processedCount,
-          last_shopify_cursor: cursor
-        })
-        .eq('id', jobId)
-
-      console.log(`✅ Processed ${processedCount}/${job.total_products}`)
-
-      // Get next cursor
-      const linkHeader = response.headers.get('Link')
-      if (linkHeader && processedCount < job.total_products) {
-        const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
-        if (nextMatch) {
-          const nextUrl = new URL(nextMatch[1])
-          cursor = nextUrl.searchParams.get('page_info')
-        } else {
-          break
-        }
-      } else {
-        break
-      }
-
-      // Small delay between batches
-      await new Promise(resolve => setTimeout(resolve, 500))
+    // Check if already completed
+    if (job.status === 'completed') {
+      return new Response(
+        JSON.stringify({ success: true, done: true, message: 'Already completed' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // Mark as completed
+    const store = job.connected_stores
+    const cursor = job.last_shopify_cursor
+
+    // Update to processing if pending
+    if (job.status === 'pending') {
+      await supabase
+        .from('sync_jobs')
+        .update({ status: 'processing' })
+        .eq('id', jobId)
+    }
+
+    // Fetch ONE batch from Shopify
+    let url = `https://${store.shop_domain}/admin/api/2024-01/products.json?limit=250`
+    if (cursor) url += `&page_info=${cursor}`
+
+    console.log(`📦 Fetching batch from Shopify...`)
+
+    const response = await fetch(url, {
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`Shopify API error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const products = data.products || []
+
+    console.log(`✅ Fetched ${products.length} products`)
+
+    // Process products
+    for (const product of products) {
+      for (const variant of product.variants) {
+        const normalizedTitle = normalizeCardName(product.title)
+
+        // Try to find matching card
+        const { data: matchingCards } = await supabase
+          .from('yugioh_cards')
+          .select('id, name')
+          .ilike('name', `%${normalizedTitle}%`)
+          .limit(5)
+
+        let bestMatch = null
+        if (matchingCards && matchingCards.length > 0) {
+          bestMatch = matchingCards.reduce((best: any, card: any) => {
+            const cardNorm = normalizeCardName(card.name)
+            const similarity = calculateSimilarity(normalizedTitle, cardNorm)
+            return similarity > (best?.similarity || 0) 
+              ? { ...card, similarity } 
+              : best
+          }, null)
+
+          if (bestMatch && bestMatch.similarity < 0.6) {
+            bestMatch = null
+          }
+        }
+
+        // Upsert product
+        await supabase
+          .from('products')
+          .upsert({
+            store_id: store.id,
+            shopify_product_id: product.id.toString(),
+            shopify_variant_id: variant.id.toString(),
+            title: product.title,
+            variant_title: variant.title !== 'Default Title' ? variant.title : null,
+            price: parseFloat(variant.price),
+            inventory_quantity: variant.inventory_quantity || 0,
+            sku: variant.sku || null,
+            matched_card_id: bestMatch?.id || null,
+            matched_card_name: bestMatch?.name || null,
+            match_confidence: bestMatch?.similarity || null
+          }, {
+            onConflict: 'store_id,shopify_variant_id'
+          })
+      }
+    }
+
+    const newProcessed = job.processed_products + products.length
+
+    // Get next cursor
+    const linkHeader = response.headers.get('Link')
+    let nextCursor = null
+    let hasMore = false
+    
+    if (linkHeader && newProcessed < job.total_products) {
+      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
+      if (nextMatch) {
+        const nextUrl = new URL(nextMatch[1])
+        nextCursor = nextUrl.searchParams.get('page_info')
+        hasMore = true
+      }
+    }
+
+    // Update job progress
+    const isComplete = !hasMore || newProcessed >= job.total_products
+
     await supabase
       .from('sync_jobs')
       .update({
-        status: 'completed',
-        completed_at: new Date().toISOString()
+        processed_products: newProcessed,
+        last_shopify_cursor: nextCursor,
+        status: isComplete ? 'completed' : 'processing',
+        completed_at: isComplete ? new Date().toISOString() : null
       })
       .eq('id', jobId)
 
-    console.log(`✅ Sync complete! Processed ${processedCount} products`)
+    console.log(`✅ Batch complete: ${newProcessed}/${job.total_products}`)
 
     return new Response(
-      JSON.stringify({ success: true, processed: processedCount }),
+      JSON.stringify({ 
+        success: true, 
+        processed: newProcessed,
+        total: job.total_products,
+        done: isComplete,
+        hasMore: hasMore
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

@@ -157,9 +157,47 @@ const response = await fetch('/.netlify/functions/start-sync', {
 }
 
 const startSyncPolling = (jobId) => {
-  console.log('🔄 Starting progress polling...')
+  console.log('🔄 Starting batch processing...')
   
-  // Poll every 2 seconds
+  // Function to process next batch
+  const processNextBatch = async () => {
+    try {
+      console.log('📦 Requesting next batch...')
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-shopify-sync`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({ jobId })
+        }
+      )
+
+      if (!response.ok) {
+        console.error('Batch processing error:', response.status)
+        return
+      }
+
+      const result = await response.json()
+      console.log('✅ Batch result:', result)
+
+      // If not done, process next batch after a short delay
+      if (!result.done && result.hasMore) {
+        setTimeout(() => processNextBatch(), 1000) // 1 second delay between batches
+      }
+
+    } catch (error) {
+      console.error('Batch processing error:', error)
+    }
+  }
+
+  // Start processing batches
+  processNextBatch()
+  
+  // Also poll for UI updates every 2 seconds
   const interval = setInterval(async () => {
     try {
       const { data: job, error } = await supabase
@@ -201,7 +239,7 @@ const startSyncPolling = (jobId) => {
     } catch (error) {
       console.error('Polling error:', error)
     }
-  }, 2000) // Poll every 2 seconds
+  }, 2000)
   
   setSyncPolling(interval)
 }
@@ -612,6 +650,25 @@ const handleCSVUpload = async (file) => {
                   <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
                     {Math.round((syncJob.processed_products / syncJob.total_products) * 100)}% complete
                   </p>
+                  {/* Add this NEW section */}
+<div style={{
+  marginTop: '12px',
+  padding: '12px',
+  background: '#0a0a1f',
+  border: '1px solid #2d2d44',
+  borderRadius: '8px',
+  fontSize: '0.85rem',
+  color: '#888'
+}}>
+  <span style={{ marginRight: '8px' }}>💡</span>
+  <strong style={{ color: '#00ff9d' }}>Tip:</strong> This sync runs in the background on our servers. 
+  Feel free to close this page and come back later - your progress is automatically saved!
+  {syncJob.total_products > 5000 && (
+    <span style={{ display: 'block', marginTop: '8px', fontSize: '0.8rem' }}>
+      ⏱️ Large sync detected - Estimated completion: ~{Math.ceil(syncJob.total_products / 250 * 3 / 60)} minutes
+    </span>
+  )}
+</div>
                 </div>
               )}
               
