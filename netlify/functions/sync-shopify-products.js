@@ -72,24 +72,19 @@ export const handler = async (event) => {
     console.log(`✅ Created job: ${job.id}`)
     console.log(`🚀 Triggering background worker...`)
 
-    // Trigger background worker function
-    const workerUrl = `${process.env.URL}/.netlify/functions/process-sync-job`
-    
-    const workerResponse = await fetch(workerUrl, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ jobId: job.id })
-    })
+   // Trigger background worker function (fire and forget)
+const workerUrl = `${process.env.URL}/.netlify/functions/process-sync-job`
 
-    if (!workerResponse.ok) {
-      const errorText = await workerResponse.text()
-      console.error('❌ Worker response:', errorText)
-      throw new Error('Failed to start background worker')
-    }
+// Fire and forget - don't wait for response
+fetch(workerUrl, {
+  method: 'POST',
+  headers: { 
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ jobId: job.id })
+}).catch(err => console.error('Failed to trigger worker:', err))
 
-    console.log(`✅ Background worker started successfully`)
+console.log(`✅ Background worker triggered`)
     console.log('\n========================================')
     console.log('✅ SYNC JOB CREATED - PROCESSING IN BACKGROUND')
     console.log('========================================\n')
