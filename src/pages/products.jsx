@@ -154,6 +154,12 @@ async function handleMatchAll() {
 
     console.log('🏪 Store ID:', store.id)
 
+    // Get user's session token
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      throw new Error('Not authenticated')
+    }
+
     let totalMatched = 0
     let totalFailed = 0
     let hasMore = true
@@ -167,7 +173,7 @@ async function handleMatchAll() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${session.access_token}`  // ← Changed this!
         },
         body: JSON.stringify({
           storeId: store.id,
@@ -178,7 +184,7 @@ async function handleMatchAll() {
       console.log('📡 Response status:', response.status)
       
       const result = await response.json()
-      console.log('📦 Response data:', result)  // ← Add this!
+      console.log('📦 Response data:', result)
 
       if (!result.success) {
         throw new Error(result.error || 'Matching failed')
