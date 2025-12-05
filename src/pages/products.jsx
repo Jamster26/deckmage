@@ -131,92 +131,85 @@ useEffect(() => {
   }
 
 async function handleMatchAll() {
-  const unmatchedProducts = products.filter(p => !p.matched_card_name)
-  
-  if (unmatchedProducts.length === 0) {
-    alert('All products are already matched!')
-    return
-  }
-
   const confirmed = confirm(
-    `This will attempt to automatically match ${unmatchedProducts.length} unmatched products. This may take a while. Continue?`
+    `This will attempt to match ALL 14,010 products to Yu-Gi-Oh cards. This may take several minutes. Continue?`
   )
   
   if (!confirmed) return
 
   setAutoMatching(true)
-  setMatchProgress({ current: 0, total: unmatchedProducts.length })
+  setMatchProgress({ current: 0, total: 14010 })
 
-  let successCount = 0
-  let failCount = 0
+  try {
+    // Get store ID first
+    const { data: store } = await supabase
+      .from('connected_stores')
+      .select('id')
+      .eq('user_id', user.id)
+      .single()
 
-  for (let i = 0; i < unmatchedProducts.length; i++) {
-    const product = unmatchedProducts[i]
-    setMatchProgress({ current: i + 1, total: unmatchedProducts.length })
-
-    try {
-      // Normalize product title
-      const normalizedTitle = product.title
-        .toLowerCase()
-        .replace(/[''"]/g, '')
-        .replace(/[-–—∙•·]/g, ' ')
-        .replace(/[^\w\s]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-      // Search yugioh_cards for fuzzy match
-      const { data: cards, error } = await supabase
-        .from('yugioh_cards')
-        .select('id, name')
-        .ilike('name', `%${normalizedTitle}%`)
-        .limit(1)
-
-      if (error || !cards || cards.length === 0) {
-        failCount++
-        continue
-      }
-
-      const matchedCard = cards[0]
-
-      // Save the match
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({
-          matched_card_id: matchedCard.id,
-          matched_card_name: matchedCard.name,
-          normalized_card_name: matchedCard.name.toLowerCase()
-        })
-        .eq('id', product.id)
-
-      if (updateError) {
-        console.error('Error auto-matching:', updateError)
-        failCount++
-      } else {
-        successCount++
-      }
-
-      // Small delay to avoid overwhelming database
-      await new Promise(resolve => setTimeout(resolve, 100))
-
-    } catch (error) {
-      console.error('Error processing product:', error)
-      failCount++
+    if (!store) {
+      throw new Error('Store not found')
     }
+
+    let totalMatched = 0
+    let totalFailed = 0
+    let hasMore = true
+
+    // Process in batches until done
+    while (hasMore) {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-all-products`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            storeId: store.id,
+            batchSize: 100
+          })
+        }
+      )
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Matching failed')
+      }
+
+      totalMatched += result.matched
+      totalFailed += result.failed
+      hasMore = result.hasMore
+
+      // Update progress
+      const processed = totalMatched + totalFailed
+      setMatchProgress({ current: processed, total: 14010 })
+
+      console.log(`Progress: ${processed}/14010 (${result.remaining} remaining)`)
+
+      // Small delay between batches
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+
+    alert(
+      `Matching complete!\n\n` +
+      `✅ Successfully matched: ${totalMatched}\n` +
+      `❌ Failed to match: ${totalFailed}\n\n` +
+      `Refreshing products...`
+    )
+
+    // Refresh products
+    await fetchProducts(user.id)
+
+  } catch (error) {
+    console.error('Error:', error)
+    alert('Matching failed: ' + error.message)
+  } finally {
+    setAutoMatching(false)
+    setMatchProgress({ current: 0, total: 0 })
   }
-
-  setAutoMatching(false)
-  setMatchProgress({ current: 0, total: 0 })
-
-  // Refresh products
-  await fetchProducts(user.id)
-
-  // Show results
-  alert(
-    `Auto-matching complete!\n\n` +
-    `✅ Successfully matched: ${successCount}\n` +
-    `❌ Failed to match: ${failCount}\n\n` +
-    `You can manually review and adjust matches as needed.`
-  )
 }
 
   return (
