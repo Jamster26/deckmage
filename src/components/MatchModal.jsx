@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 
-// ADD THIS HELPER FUNCTION:
+// Normalize card name helper
 function normalizeCardName(name) {
   if (!name) return '';
   return name
@@ -13,6 +13,61 @@ function normalizeCardName(name) {
     .trim();
 }
 
+// Extract clean card name from product title
+function extractCardName(title) {
+  if (!title) return '';
+  
+  // Remove common suffixes
+  return title
+    .replace(/\([^)]*\)/g, '') // Remove parentheses
+    .replace(/\[[^\]]*\]/g, '') // Remove brackets
+    .replace(/\s*-\s*\w+\d+\s*$/i, '') // Remove set codes
+    .replace(/\s*(Near Mint|LP|MP|HP|Damaged|1st Edition|Unlimited|Limited)\s*/gi, '') // Remove conditions
+    .trim();
+}
+
+// Search Yu-Gi-Oh cards in local database
+async function searchYGOCards(query) {
+  if (!query || query.trim().length < 3) return [];
+  
+  try {
+    // Step 1: Try exact match first (fastest)
+    const { data: exactMatch } = await supabase
+      .from('yugioh_cards')
+      .select('*')
+      .eq('name', query)
+      .limit(5)
+    
+    if (exactMatch && exactMatch.length > 0) {
+      return exactMatch;
+    }
+    
+    // Step 2: Try case-insensitive search
+    const { data: fuzzyMatch } = await supabase
+      .from('yugioh_cards')
+      .select('*')
+      .ilike('name', `%${query}%`)
+      .limit(20)
+    
+    if (fuzzyMatch && fuzzyMatch.length > 0) {
+      return fuzzyMatch;
+    }
+    
+    // Step 3: Try normalized search
+    const normalized = normalizeCardName(query)
+    const { data: normalizedMatch } = await supabase
+      .from('yugioh_cards')
+      .select('*')
+      .ilike('name', `%${normalized}%`)
+      .limit(20)
+    
+    return normalizedMatch || [];
+    
+  } catch (error) {
+    console.error('Search error:', error)
+    return [];
+  }
+}
 
 function MatchModal({ product, onClose, onSave }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -21,51 +76,46 @@ function MatchModal({ product, onClose, onSave }) {
   const [searching, setSearching] = useState(false)
   const [saving, setSaving] = useState(false)
 
- useEffect(() => {
-  setSelectedCard(null)
-  setSearchResults([])
-  setSearchQuery('')
-  
-  const suggested = extractCardName(product.title)
-  if (suggested) {
-    setSearchQuery(suggested)
-    handleSearch(suggested)
-  }
-}, [product.id])
-
-// ADD THIS ENTIRE useEffect FOR LIVE SEARCH:
-useEffect(() => {
-  // Don't search if query is too short
-  if (searchQuery.trim().length < 3) {
+  // Initialize with suggested card name
+  useEffect(() => {
+    setSelectedCard(null)
     setSearchResults([])
-    setSearching(false)
-    return
-  }
-
-  // Debounce: wait 350ms after user stops typing
-  const timer = setTimeout(() => {
-    handleSearch(searchQuery)
-  }, 350)
-
-  // Cleanup: cancel timer if user keeps typing
-  return () => clearTimeout(timer)
-}, [searchQuery])
-
-// ESC key listener
-useEffect(() => {
-  function handleEscKey(event) {
-    if (event.key === 'Escape') {
-      onClose()
+    
+    const suggested = extractCardName(product.title)
+    if (suggested) {
+      setSearchQuery(suggested)
+      handleSearch(suggested)
+    } else {
+      setSearchQuery('')
     }
-  }
-  // ... rest of ESC listener
+  }, [product.id])
+
+  // Live search as user types (debounced)
+  useEffect(() => {
+    if (searchQuery.trim().length < 3) {
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+
+    setSearching(true)
+    const timer = setTimeout(() => {
+      handleSearch(searchQuery)
+    }, 350)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // ESC key to close
+  useEffect(() => {
+    function handleEscKey(event) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
 
     document.addEventListener('keydown', handleEscKey)
-    
-    // Cleanup
-    return () => {
-      document.removeEventListener('keydown', handleEscKey)
-    }
+    return () => document.removeEventListener('keydown', handleEscKey)
   }, [onClose])
 
   async function handleSearch(query = searchQuery) {
@@ -77,54 +127,52 @@ useEffect(() => {
     setSearching(false)
   }
 
-async function handleSave() {
-  if (!selectedCard) return
-  
-  setSaving(true)
-  
-  try {
-    console.log('Saving match for product:', product.id)
-    console.log('Selected card:', selectedCard.name)
+  async function handleSave() {
+    if (!selectedCard) return
     
-    // Update - use matched_card_id instead of card_id
-    const { data: updateData, error } = await supabase
-      .from('products')
-      .update({
-        matched_card_name: selectedCard.name,
-        matched_card_id: selectedCard.id.toString(),
-        normalized_card_name: normalizeCardName(selectedCard.name) // ADD THIS LINE
-      })
-      .eq('id', product.id)
-      .select()
+    setSaving(true)
     
-    console.log('Update result:', { updateData, error })
-    
-    if (error) {
-      console.error('Error saving match:', error)
-      alert('Failed to save match: ' + error.message)
+    try {
+      console.log('Saving match for product:', product.id)
+      console.log('Selected card:', selectedCard.name)
+      
+      const { data: updateData, error } = await supabase
+        .from('products')
+        .update({
+          matched_card_name: selectedCard.name,
+          matched_card_id: selectedCard.id.toString(),
+          normalized_card_name: normalizeCardName(selectedCard.name)
+        })
+        .eq('id', product.id)
+        .select()
+      
+      console.log('Update result:', { updateData, error })
+      
+      if (error) {
+        console.error('Error saving match:', error)
+        alert('Failed to save match: ' + error.message)
+        setSaving(false)
+        return
+      }
+      
+      // Verify the save
+      const { data: verified } = await supabase
+        .from('products')
+        .select('id, title, matched_card_name, matched_card_id')
+        .eq('id', product.id)
+        .single()
+      
+      console.log('Verified data after save:', verified)
+      
       setSaving(false)
-      return
+      onSave() // Trigger parent refresh
+      
+    } catch (error) {
+      console.error('Error saving match:', error)
+      alert('Failed to save match')
+      setSaving(false)
     }
-    
-    // Verify the save
-    const { data: verified } = await supabase
-      .from('products')
-      .select('id, title, matched_card_name, matched_card_id')
-      .eq('id', product.id)
-      .single()
-    
-    console.log('Verified data after save:', verified)
-    
-    console.log('Match saved successfully!')
-    setSaving(false)
-    onSave()
-    
-  } catch (error) {
-    console.error('Error saving match:', error)
-    alert('Failed to save match')
-    setSaving(false)
   }
-}
 
   async function handleUnmatch() {
     setSaving(true)
@@ -133,7 +181,8 @@ async function handleSave() {
       .from('products')
       .update({
         matched_card_name: null,
-        card_id: null
+        matched_card_id: null,
+        normalized_card_name: null
       })
       .eq('id', product.id)
     
@@ -185,7 +234,7 @@ async function handleSave() {
               Match Product to Card
             </h2>
             <p style={{ color: '#888', fontSize: '0.95rem' }}>
-              Link this product to a Yu-Gi-Oh! card for better search visibility
+              Link this product to a Yu-Gi-Oh! card for deck building
             </p>
           </div>
           <button
@@ -232,44 +281,47 @@ async function handleSave() {
             <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: '600', marginBottom: '8px' }}>
               {product.title}
             </div>
-            <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '4px' }}>
-              {product.vendor && `by ${product.vendor}`}
-            </div>
-            {product.variants?.[0] && (
+            {product.matched_card_name && (
+              <div style={{ color: '#00ff9d', fontSize: '0.9rem', marginBottom: '4px' }}>
+                Currently matched to: {product.matched_card_name}
+              </div>
+            )}
+            {product.price && (
               <div style={{ color: '#00ff9d', fontSize: '1rem', marginTop: '8px' }}>
-                ${parseFloat(product.variants[0].price).toFixed(2)}
+                ${parseFloat(product.price).toFixed(2)}
               </div>
             )}
           </div>
         </div>
 
-       {/* Search Section */}
-<div style={{ marginBottom: '30px' }}>
-  <label style={{ display: 'block', color: '#888', marginBottom: '8px', fontSize: '0.9rem' }}>
-    Search for Yu-Gi-Oh! Card (type to search)
-  </label>
-  <input
-    type="text"
-    value={searchQuery}
-    onChange={(e) => setSearchQuery(e.target.value)}
-    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-    placeholder="Type at least 3 characters..." // UPDATED
-    style={{
-      width: '100%', // CHANGED from flex: 1
-      padding: '12px',
-      background: '#0a0a1f',
-      border: '1px solid #2d2d44',
-      borderRadius: '8px',
-      color: '#fff',
-      fontSize: '1rem'
-    }}
-  />
-  {searching && ( // ADD THIS LOADING INDICATOR
-    <div style={{ color: '#888', fontSize: '0.9rem', marginTop: '8px' }}>
-      🔍 Searching...
-    </div>
-  )}
-</div>
+        {/* Search Section */}
+        <div style={{ marginBottom: '30px' }}>
+          <label style={{ display: 'block', color: '#888', marginBottom: '8px', fontSize: '0.9rem' }}>
+            Search for Yu-Gi-Oh! Card (type at least 3 characters)
+          </label>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            placeholder="e.g. Dark Magician, Blue-Eyes, Exodia..."
+            autoFocus
+            style={{
+              width: '100%',
+              padding: '12px',
+              background: '#0a0a1f',
+              border: '1px solid #2d2d44',
+              borderRadius: '8px',
+              color: '#fff',
+              fontSize: '1rem'
+            }}
+          />
+          {searching && (
+            <div style={{ color: '#888', fontSize: '0.9rem', marginTop: '8px' }}>
+              🔍 Searching...
+            </div>
+          )}
+        </div>
 
         {/* Search Results */}
         {searchResults.length > 0 && (
@@ -308,9 +360,9 @@ async function handleSave() {
                     }
                   }}
                 >
-                  {card.card_images?.[0] && (
+                  {card.image_url_small && (
                     <img
-                      src={card.card_images[0].image_url_small}
+                      src={card.image_url_small}
                       alt={card.name}
                       style={{
                         width: '60px',
@@ -326,9 +378,9 @@ async function handleSave() {
                       {card.name}
                     </div>
                     <div style={{ color: '#888', fontSize: '0.85rem' }}>
-                      {card.type} • {card.race}
+                      {card.type} {card.race && `• ${card.race}`}
                     </div>
-                    {card.atk !== undefined && (
+                    {card.atk !== undefined && card.atk !== null && (
                       <div style={{ color: '#00ff9d', fontSize: '0.85rem', marginTop: '4px' }}>
                         ATK {card.atk} / DEF {card.def}
                       </div>
@@ -349,14 +401,14 @@ async function handleSave() {
           </div>
         )}
 
-        {searchResults.length === 0 && searchQuery && !searching && (
+        {searchResults.length === 0 && searchQuery.length >= 3 && !searching && (
           <div style={{
             padding: '40px',
             textAlign: 'center',
             color: '#888',
             fontSize: '0.95rem'
           }}>
-            No cards found. Try a different search term.
+            No cards found for "{searchQuery}". Try a different search term.
           </div>
         )}
 

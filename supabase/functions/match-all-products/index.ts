@@ -72,35 +72,94 @@ serve(async (req) => {
     // Process each product
     for (const product of products) {
       try {
-        // Normalize title
-        const normalized = product.title
-          .toLowerCase()
-          .replace(/[''"]/g, '')
-          .replace(/[-–—∙•·]/g, ' ')
-          .replace(/[^\w\s]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim()
+        console.log(`🔍 Matching: "${product.title}"`)
 
-        console.log(`🔍 Searching for: "${normalized}"`)
+        let matchedCard = null
+        let matchMethod = null
 
-        // Search for matching card
-        const { data: cards } = await supabase
+        // STEP 1: Try exact match first (fastest, best for clean data)
+        const { data: exactCards } = await supabase
           .from('yugioh_cards')
           .select('id, name')
-          .ilike('name', `%${normalized}%`)
+          .eq('name', product.title)
           .limit(1)
 
-        if (cards && cards.length > 0) {
-          const matchedCard = cards[0]
-          console.log(`✅ Found match: "${matchedCard.name}"`)
+        if (exactCards && exactCards.length > 0) {
+          matchedCard = exactCards[0]
+          matchMethod = 'exact'
+          console.log(`✅ Exact match: "${matchedCard.name}"`)
+        }
 
-          // Update product
+        // STEP 2: Try normalized fuzzy match (handles hyphens, quotes, etc.)
+        if (!matchedCard) {
+          const normalized = product.title
+            .toLowerCase()
+            .replace(/[''"]/g, '') // Remove quotes
+            .replace(/[-–—∙•·]/g, ' ') // Replace dashes with spaces
+            .replace(/[^\w\s]/g, '') // Remove special chars
+            .replace(/\s+/g, ' ') // Collapse multiple spaces
+            .trim()
+
+          console.log(`   🔄 Trying fuzzy match: "${normalized}"`)
+
+          const { data: fuzzyCards } = await supabase
+            .from('yugioh_cards')
+            .select('id, name')
+            .ilike('name', `%${normalized}%`)
+            .limit(1)
+
+          if (fuzzyCards && fuzzyCards.length > 0) {
+            matchedCard = fuzzyCards[0]
+            matchMethod = 'fuzzy'
+            console.log(`✅ Fuzzy match: "${matchedCard.name}"`)
+          }
+        }
+
+        // STEP 3: Try matching just the core card name (removes edition, set codes, etc.)
+        if (!matchedCard) {
+          // Remove common suffixes like (1st Edition), [LOB-001], etc.
+          const coreTitle = product.title
+            .replace(/\([^)]*\)/g, '') // Remove parentheses content
+            .replace(/\[[^\]]*\]/g, '') // Remove bracket content
+            .replace(/\s*-\s*\w+\d+\s*$/i, '') // Remove set codes at end
+            .replace(/\s*(Near Mint|LP|MP|HP|Damaged|1st Edition|Unlimited|Limited)\s*/gi, '') // Remove conditions/editions
+            .trim()
+
+          if (coreTitle !== product.title) {
+            console.log(`   🔄 Trying core name: "${coreTitle}"`)
+
+            const normalized = coreTitle
+              .toLowerCase()
+              .replace(/[''"]/g, '')
+              .replace(/[-–—∙•·]/g, ' ')
+              .replace(/[^\w\s]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim()
+
+            const { data: coreCards } = await supabase
+              .from('yugioh_cards')
+              .select('id, name')
+              .ilike('name', `%${normalized}%`)
+              .limit(1)
+
+            if (coreCards && coreCards.length > 0) {
+              matchedCard = coreCards[0]
+              matchMethod = 'core'
+              console.log(`✅ Core match: "${matchedCard.name}"`)
+            }
+          }
+        }
+
+        // Update product if match found
+        if (matchedCard) {
+          const confidence = matchMethod === 'exact' ? 1.0 : matchMethod === 'fuzzy' ? 0.8 : 0.6
+
           const { error: updateError } = await supabase
             .from('products')
             .update({
               matched_card_id: matchedCard.id,
               matched_card_name: matchedCard.name,
-              match_confidence: 0.8
+              match_confidence: confidence
             })
             .eq('id', product.id)
 
