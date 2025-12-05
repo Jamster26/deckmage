@@ -55,7 +55,7 @@ const [csvFile, setCSVFile] = useState(null)
   if (data && !error) {
     setConnectedStore(data)
     loadProducts(data.id)
-        checkForActiveSyncJob(data.id)  // ← Add this line
+        checkForActiveSyncJob(data.id)  // ← Add this line!
 
   }
 }
@@ -125,7 +125,7 @@ const handleSyncProducts = async () => {
   setSyncing(true)
   
   try {
-    const response = await fetch('/.netlify/functions/sync-shopify-products', {
+const response = await fetch('/.netlify/functions/sync-shopify-products-background', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
