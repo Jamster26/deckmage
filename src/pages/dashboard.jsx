@@ -222,17 +222,33 @@ const checkForActiveSyncJob = async (storeId) => {
       .select('*')
       .eq('store_id', storeId)
       .in('status', ['pending', 'processing'])
-      .order('started_at', { ascending: false })  // ← Changed this
+      .order('started_at', { ascending: false })
       .limit(1)
       .single()
     
     if (error && error.code !== 'PGRST116') {
-      // PGRST116 = no rows found, which is fine
       console.error('Error checking for active jobs:', error)
       return
     }
     
     if (activeJob) {
+      // Check if job is stuck (older than 15 minutes)
+      const jobAge = Date.now() - new Date(activeJob.started_at).getTime()
+      const fifteenMinutes = 15 * 60 * 1000
+      
+      if (jobAge > fifteenMinutes) {
+        console.log('⚠️ Found stuck job, marking as failed...')
+        await supabase
+          .from('sync_jobs')
+          .update({
+            status: 'failed',
+            error_message: 'Job timed out after 15 minutes',
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', activeJob.id)
+        return
+      }
+      
       console.log('📊 Found active sync job, resuming progress tracking...')
       setSyncJob(activeJob)
       setSyncing(true)
