@@ -35,11 +35,15 @@ serve(async (req) => {
       .single()
 
     if (jobError || !job) {
+      console.error(`❌ Job error:`, jobError)
       throw new Error('Job not found')
     }
 
+    console.log(`📋 Job status: ${job.status}, Processed: ${job.processed_products}/${job.total_products}`)
+
     // Check if already completed
     if (job.status === 'completed') {
+      console.log(`⏭️ Job already completed, skipping`)
       return new Response(
         JSON.stringify({ success: true, done: true, message: 'Already completed' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -48,6 +52,8 @@ serve(async (req) => {
 
     const store = job.connected_stores
     const cursor = job.last_shopify_cursor
+
+    console.log(`🏪 Store: ${store.shop_domain}, Cursor: ${cursor || 'none'}`)
 
     // Update to processing if pending
     if (job.status === 'pending') {
@@ -61,7 +67,7 @@ serve(async (req) => {
     let url = `https://${store.shop_domain}/admin/api/2024-01/products.json?limit=250`
     if (cursor) url += `&page_info=${cursor}`
 
-    console.log(`📦 Fetching batch from Shopify...`)
+    console.log(`📦 Fetching from Shopify: ${url}`)
 
     const response = await fetch(url, {
       headers: {
@@ -71,18 +77,20 @@ serve(async (req) => {
     })
 
     if (!response.ok) {
+      console.error(`❌ Shopify API error: ${response.status}`)
       throw new Error(`Shopify API error: ${response.status}`)
     }
 
     const data = await response.json()
     const products = data.products || []
 
-    console.log(`✅ Fetched ${products.length} products, inserting into database...`)
+    console.log(`✅ Shopify returned ${products.length} products`)
 
     // Build batch insert array (MUCH faster than individual upserts)
     const productsToInsert = []
     
     for (const product of products) {
+      console.log(`   📦 Product: "${product.title}" with ${product.variants?.length || 0} variants`)
       for (const variant of product.variants) {
         productsToInsert.push({
           store_id: store.id,
@@ -93,21 +101,34 @@ serve(async (req) => {
           price: parseFloat(variant.price),
           inventory_quantity: variant.inventory_quantity || 0,
           sku: variant.sku || null,
-          matched_card_id: null,  // We'll match later
+          matched_card_id: null,
           matched_card_name: null,
           match_confidence: null
         })
       }
     }
 
+    console.log(`📝 Built array of ${productsToInsert.length} variants to insert`)
+
     // Single batch upsert - MUCH more efficient
     if (productsToInsert.length > 0) {
-      await supabase
+      console.log(`💾 Starting upsert to 'products' table...`)
+      
+      const { data: upsertData, error: upsertError } = await supabase
         .from('products')
         .upsert(productsToInsert, { 
           onConflict: 'store_id,shopify_variant_id',
           ignoreDuplicates: false 
         })
+      
+      if (upsertError) {
+        console.error(`❌ Upsert error:`, upsertError)
+        throw upsertError
+      }
+      
+      console.log(`✅ Upsert successful!`)
+    } else {
+      console.log(`⚠️ No products to insert!`)
     }
 
     const newProcessed = job.processed_products + products.length
@@ -126,6 +147,8 @@ serve(async (req) => {
       }
     }
 
+    console.log(`🔗 Next cursor: ${nextCursor || 'none'}, hasMore: ${hasMore}`)
+
     // Update job progress
     const isComplete = !hasMore || newProcessed >= job.total_products
 
@@ -139,7 +162,7 @@ serve(async (req) => {
       })
       .eq('id', jobId)
 
-    console.log(`✅ Batch complete: ${newProcessed}/${job.total_products}`)
+    console.log(`✅ Batch complete: ${newProcessed}/${job.total_products}, isComplete: ${isComplete}`)
 
     return new Response(
       JSON.stringify({ 
