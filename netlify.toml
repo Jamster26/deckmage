@@ -1,9 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
 [functions]
   directory = "netlify/functions"
 
 # Schedule daily card database update at 2 AM UTC
-[[functions]]
-  path = "/update-yugioh-cards"
+[functions."update-yugioh-cards"]
   schedule = "@daily"
 
 # Landing page by default
