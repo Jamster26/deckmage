@@ -222,7 +222,7 @@ const checkForActiveSyncJob = async (storeId) => {
       .select('*')
       .eq('store_id', storeId)
       .in('status', ['pending', 'processing'])
-      .order('created_at', { ascending: false })
+      .order('started_at', { ascending: false })  // ← Changed this
       .limit(1)
       .single()
     
