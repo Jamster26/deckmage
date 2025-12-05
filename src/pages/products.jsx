@@ -152,28 +152,33 @@ async function handleMatchAll() {
       throw new Error('Store not found')
     }
 
+    console.log('🏪 Store ID:', store.id)
+
     let totalMatched = 0
     let totalFailed = 0
     let hasMore = true
 
     // Process in batches until done
     while (hasMore) {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-all-products`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({
-            storeId: store.id,
-            batchSize: 100
-          })
-        }
-      )
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-all-products`
+      console.log('🔗 Calling:', url)
 
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          storeId: store.id,
+          batchSize: 100
+        })
+      })
+
+      console.log('📡 Response status:', response.status)
+      
       const result = await response.json()
+      console.log('📦 Response data:', result)  // ← Add this!
 
       if (!result.success) {
         throw new Error(result.error || 'Matching failed')
@@ -204,7 +209,7 @@ async function handleMatchAll() {
     await fetchProducts(user.id)
 
   } catch (error) {
-    console.error('Error:', error)
+    console.error('❌ Full error:', error)
     alert('Matching failed: ' + error.message)
   } finally {
     setAutoMatching(false)
