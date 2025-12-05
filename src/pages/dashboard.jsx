@@ -125,8 +125,8 @@ const handleSyncProducts = async () => {
   setSyncing(true)
   
   try {
-const response = await fetch('/.netlify/functions/sync-shopify-products-background', {
-      method: 'POST',
+const response = await fetch('/.netlify/functions/start-sync', {
+        method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
