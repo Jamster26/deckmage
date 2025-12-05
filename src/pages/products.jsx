@@ -139,7 +139,7 @@ async function handleMatchAll() {
   }
 
   const confirmed = confirm(
-    `This will attempt to automatically match ${unmatchedProducts.length} unmatched products. Continue?`
+    `This will attempt to automatically match ${unmatchedProducts.length} unmatched products. This may take a while. Continue?`
   )
   
   if (!confirmed) return
@@ -155,52 +155,48 @@ async function handleMatchAll() {
     setMatchProgress({ current: i + 1, total: unmatchedProducts.length })
 
     try {
-      // Use your backend to search (it queries local DB)
-      const response = await fetch('/.netlify/functions/search-inventory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          shopId: user.store_domain, // Adjust this to your store domain
-          cardNames: [product.title]
-        })
-      })
-      
-      const data = await response.json()
-      
-      if (!data.success || !data.results || Object.keys(data.results).length === 0) {
+      // Normalize product title
+      const normalizedTitle = product.title
+        .toLowerCase()
+        .replace(/[''"]/g, '')
+        .replace(/[-–—∙•·]/g, ' ')
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+      // Search yugioh_cards for fuzzy match
+      const { data: cards, error } = await supabase
+        .from('yugioh_cards')
+        .select('id, name')
+        .ilike('name', `%${normalizedTitle}%`)
+        .limit(1)
+
+      if (error || !cards || cards.length === 0) {
         failCount++
         continue
       }
 
-      // Get first matched card name
-      const cardName = Object.keys(data.results)[0]
-      const matches = data.results[cardName]
-      
-      if (!matches || matches.length === 0) {
-        failCount++
-        continue
-      }
-
-      const matchedCard = matches[0]
+      const matchedCard = cards[0]
 
       // Save the match
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from('products')
         .update({
-          matched_card_name: matchedCard.matchedCardName,
-          normalized_card_name: matchedCard.matchedCardName.toLowerCase()
+          matched_card_id: matchedCard.id,
+          matched_card_name: matchedCard.name,
+          normalized_card_name: matchedCard.name.toLowerCase()
         })
         .eq('id', product.id)
 
-      if (error) {
-        console.error('Error auto-matching:', error)
+      if (updateError) {
+        console.error('Error auto-matching:', updateError)
         failCount++
       } else {
         successCount++
       }
 
-      // Small delay to avoid overwhelming backend
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Small delay to avoid overwhelming database
+      await new Promise(resolve => setTimeout(resolve, 100))
 
     } catch (error) {
       console.error('Error processing product:', error)
