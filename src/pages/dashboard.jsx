@@ -496,7 +496,7 @@ const handleCSVUpload = async (file) => {
     >
       📤 Upload CSV
     </button>
-    
+
               <button style={{
                 padding: '12px 24px',
                 background: 'transparent',
@@ -866,7 +866,7 @@ background: product.matched_card_name ? '#00ff9d22' : '#88888822',
           </div>
         )}
 
-      </div>        // ← Main Content closes here
+      </div>          
     </div>          // ← Outer container closes here
   )
 }
