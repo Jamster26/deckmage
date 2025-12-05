@@ -46,15 +46,22 @@ const [csvFile, setCSVFile] = useState(null)
   }, [navigate])
 
   const loadConnectedStore = async (userId) => {
+  console.log('🔍 Loading connected store for user:', userId)
+  
   const { data, error } = await supabase
     .from('connected_stores')
     .select('*')
     .eq('user_id', userId)
     .single()
 
+  console.log('📦 Query result:', { data, error })
+
   if (data && !error) {
+    console.log('✅ Setting connectedStore:', data)
     setConnectedStore(data)
-loadProducts(data.id)
+    loadProducts(data.id)
+  } else {
+    console.log('❌ No store found or error:', error)
   }
 }
 
