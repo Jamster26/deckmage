@@ -61,7 +61,7 @@ function ShopifyCallback() {
           scopes: import.meta.env.VITE_SHOPIFY_SCOPES,
           updated_at: new Date().toISOString(),
         }, {
-          onConflict: 'shop_domain',
+onConflict: 'user_id,shop_domain',
           returning: 'representation'  // Get the inserted/updated row
         })
         .select()
