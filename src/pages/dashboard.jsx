@@ -107,18 +107,43 @@ const handleDisconnect = async () => {
     return
   }
 
-  const { error } = await supabase
-    .from('connected_stores')
-    .delete()
-    .eq('id', connectedStore.id)
+  try {
+    // Delete all products first
+    const { error: productsError } = await supabase
+      .from('products')
+      .delete()
+      .eq('store_id', connectedStore.id)
 
-  if (!error) {
+    if (productsError) {
+      console.error('Error deleting products:', productsError)
+    }
+
+    // Then delete the store
+    const { error: storeError } = await supabase
+      .from('connected_stores')
+      .delete()
+      .eq('id', connectedStore.id)
+
+    if (storeError) {
+      throw storeError
+    }
+
+    // Clear all state
     setConnectedStore(null)
     setProducts([])
     setProductCount(0)
+    setSyncJob(null)
+    setSyncing(false)
+
+    // Show success message
     alert('Store disconnected successfully')
-    // Force reload to clear all state
-    window.location.reload()
+
+    // Force full reload to clear everything
+    window.location.href = '/dashboard'
+    
+  } catch (error) {
+    console.error('Disconnect error:', error)
+    alert('Error disconnecting store. Please try again.')
   }
 }
 
