@@ -9,35 +9,30 @@ function Dashboard() {
   const [shopDomain, setShopDomain] = useState('')
   const [showShopInput, setShowShopInput] = useState(false)
   const [connectedStore, setConnectedStore] = useState(null)
-  const [products, setProducts] = useState([])  // ✅ Add this
+  const [products, setProducts] = useState([])
   const navigate = useNavigate()
   const [syncing, setSyncing] = useState(false)
-const [productCount, setProductCount] = useState(0)
-// Add after the existing state declarations:
-const [showCSVUpload, setShowCSVUpload] = useState(false)
-const [uploading, setUploading] = useState(false)
-const [uploadProgress, setUploadProgress] = useState('')
-const [csvFile, setCSVFile] = useState(null)
-  
+  const [productCount, setProductCount] = useState(0)
+  const [showCSVUpload, setShowCSVUpload] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState('')
+  const [csvFile, setCSVFile] = useState(null)
+  const [syncJob, setSyncJob] = useState(null)
+  const [syncPolling, setSyncPolling] = useState(null)
 
   useEffect(() => {
-    // Check if user is logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setUser(session.user)
         loadConnectedStore(session.user.id)
 
-          // 🆕 CHECK FOR SUCCESS FLAGS FROM OAUTH
-      const params = new URLSearchParams(window.location.search)
-      if (params.get('connected') === 'true' && params.get('synced') === 'true') {
-        // Show success message
-        setTimeout(() => {
-          alert('✅ Store connected and products synced successfully!')
-          // Clear URL params
-          window.history.replaceState({}, '', '/dashboard')
-        }, 500)
-      }
-      
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('connected') === 'true' && params.get('synced') === 'true') {
+          setTimeout(() => {
+            alert('✅ Store connected and products synced successfully!')
+            window.history.replaceState({}, '', '/dashboard')
+          }, 500)
+        }
       } else {
         navigate('/login')
       }
@@ -46,40 +41,37 @@ const [csvFile, setCSVFile] = useState(null)
   }, [navigate])
 
   const loadConnectedStore = async (userId) => {
-  const { data, error } = await supabase
-    .from('connected_stores')
-    .select('*')
-    .eq('user_id', userId)
-    .single()
+    const { data, error } = await supabase
+      .from('connected_stores')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
 
-  if (data && !error) {
-    setConnectedStore(data)
-    loadProducts(data.id)
-        checkForActiveSyncJob(data.id)  // ← Add this line!
-
+    if (data && !error) {
+      setConnectedStore(data)
+      loadProducts(data.id)
+      checkForActiveSyncJob(data.id)
+    }
   }
-}
 
   const loadProducts = async (storeId) => {
-  // Get count
-  const { count } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true })
-    .eq('store_id', storeId)
+    const { count } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('store_id', storeId)
 
-  setProductCount(count || 0)
+    setProductCount(count || 0)
 
-  // Get actual products
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('store_id', storeId)
-    .order('created_at', { ascending: false })
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false })
 
-  if (data && !error) {
-    setProducts(data)
+    if (data && !error) {
+      setProducts(data)
+    }
   }
-}
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -102,296 +94,244 @@ const [csvFile, setCSVFile] = useState(null)
     initiateShopifyOAuth(cleanDomain)
   }
 
-const handleDisconnect = async () => {
-  if (!confirm('Are you sure you want to disconnect your Shopify store?')) {
-    return
-  }
-
-  try {
-    const response = await fetch('/.netlify/functions/disconnect-store', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storeId: connectedStore.id })
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to disconnect')
-    }
-
-    // Clear all state
-    setConnectedStore(null)
-    setProducts([])
-    setProductCount(0)
-    setSyncJob(null)
-    setSyncing(false)
-
-    alert('Store disconnected successfully')
-
-    // Force navigation
-    window.location.href = '/dashboard'
-    
-  } catch (error) {
-    console.error('Disconnect error:', error)
-    alert(`Error: ${error.message}`)
-  }
-}
-
- const [syncJob, setSyncJob] = useState(null)
-const [syncPolling, setSyncPolling] = useState(null)
-
-const handleSyncProducts = async () => {
-  setSyncing(true)
-  
-  try {
-const response = await fetch('/.netlify/functions/start-sync', {
-        method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        storeId: connectedStore.id,
-        accessToken: connectedStore.access_token,
-        shopDomain: connectedStore.shop_domain,
-      }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || 'Failed to start sync')
-    }
-
-    const data = await response.json()
-    
-    console.log('✅ Sync job created:', data.jobId)
-    
-    // Start polling for progress
-    startSyncPolling(data.jobId)
-    
-  } catch (error) {
-    console.error('Sync error:', error)
-    alert(`❌ Error starting sync: ${error.message}`)
-    setSyncing(false)
-  }
-}
-
-const startSyncPolling = (jobId) => {
-  console.log('🔄 Starting batch processing...')
-  
- const processNextBatch = async () => {
-  try {
-    console.log('📦 Requesting next batch...')
-    
-    const response = await fetch('/.netlify/functions/start-sync', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        jobId,
-        processNextBatch: true 
-      })
-    })
-
-    if (!response.ok) {
-      console.error('Batch processing error:', response.status)
+  const handleDisconnect = async () => {
+    if (!confirm('Are you sure you want to disconnect your Shopify store?')) {
       return
     }
 
-    const result = await response.json()
-    console.log('✅ Batch result:', result)
-
-    // If not done, process next batch after a short delay
-    if (!result.done && result.hasMore) {
-      setTimeout(() => processNextBatch(), 1000)
-    }
-
-  } catch (error) {
-    console.error('Batch processing error:', error)
-  }
-}
-  // Start processing batches
-  processNextBatch()
-  
-  // Also poll for UI updates every 2 seconds
-  const interval = setInterval(async () => {
     try {
-      const { data: job, error } = await supabase
-        .from('sync_jobs')
-        .select('*')
-        .eq('id', jobId)
-        .single()
-      
-      if (error) {
-        console.error('Polling error:', error)
-        return
+      const response = await fetch('/.netlify/functions/disconnect-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: connectedStore.id })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to disconnect')
       }
-      
-      setSyncJob(job)
-      
-      console.log(`📊 Progress: ${job.processed_products}/${job.total_products} (${job.status})`)
-      
-      // Check if complete or failed
-      if (job.status === 'completed') {
-        clearInterval(interval)
-        setSyncPolling(null)
-        setSyncing(false)
-        
-        alert(`🎉 Sync complete! Processed ${job.processed_products} products!`)
-        
-        // Reload products
-loadProducts(job.store_id)  // ✅ Get it from the job instead
-        setSyncJob(null)
-        
-      } else if (job.status === 'failed') {
-        clearInterval(interval)
-        setSyncPolling(null)
-        setSyncing(false)
-        
-        alert(`❌ Sync failed: ${job.error_message}`)
-        setSyncJob(null)
-      }
+
+      setConnectedStore(null)
+      setProducts([])
+      setProductCount(0)
+      setSyncJob(null)
+      setSyncing(false)
+
+      alert('Store disconnected successfully')
+      window.location.href = '/dashboard'
       
     } catch (error) {
-      console.error('Polling error:', error)
-    }
-  }, 2000)
-  
-  setSyncPolling(interval)
-}
-
-// Cleanup polling on unmount
-useEffect(() => {
-  return () => {
-    if (syncPolling) {
-      clearInterval(syncPolling)
+      console.error('Disconnect error:', error)
+      alert(`Error: ${error.message}`)
     }
   }
-}, [syncPolling])
 
-const checkForActiveSyncJob = async (storeId) => {
-  try {
-    const { data: activeJob, error } = await supabase
-      .from('sync_jobs')
-      .select('*')
-      .eq('store_id', storeId)
-      .in('status', ['pending', 'processing'])
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .single()
-    
-    if (error && error.code !== 'PGRST116') {
-      console.error('Error checking for active jobs:', error)
-      return
-    }
-    
-    if (activeJob) {
-      // Check if job is stuck (older than 15 minutes)
-      const jobAge = Date.now() - new Date(activeJob.started_at).getTime()
-      const fifteenMinutes = 15 * 60 * 1000
+  const checkForActiveSyncJob = async (storeId) => {
+    try {
+      const { data: activeJob, error } = await supabase
+        .from('sync_jobs')
+        .select('*')
+        .eq('store_id', storeId)
+        .in('status', ['pending', 'processing'])
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single()
       
-      if (jobAge > fifteenMinutes) {
-        console.log('⚠️ Found stuck job, marking as failed...')
-        await supabase
-          .from('sync_jobs')
-          .update({
-            status: 'failed',
-            error_message: 'Job timed out after 15 minutes',
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', activeJob.id)
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error checking for active jobs:', error)
         return
       }
       
-      console.log('📊 Found active sync job, resuming progress tracking...')
-      setSyncJob(activeJob)
-      setSyncing(true)
-      startSyncPolling(activeJob.id)
+      if (activeJob) {
+        const jobAge = Date.now() - new Date(activeJob.started_at).getTime()
+        const fifteenMinutes = 15 * 60 * 1000
+        
+        if (jobAge > fifteenMinutes) {
+          console.log('⚠️ Found stuck job, marking as failed...')
+          await supabase
+            .from('sync_jobs')
+            .update({
+              status: 'failed',
+              error_message: 'Job timed out after 15 minutes',
+              completed_at: new Date().toISOString()
+            })
+            .eq('id', activeJob.id)
+          return
+        }
+        
+        console.log('📊 Found active sync job, resuming progress tracking...')
+        setSyncJob(activeJob)
+        setSyncing(true)
+        startSyncPolling(activeJob.id)
+      }
+    } catch (error) {
+      console.error('Error checking for active sync:', error)
     }
-  } catch (error) {
-    console.error('Error checking for active sync:', error)
   }
-}
 
-const handleCSVUpload = async (file) => {
-  if (!file) return
-  
-  setUploading(true)
-  setUploadProgress('Reading CSV file...')
-  
-  try {
-    // Read CSV file
-    const text = await file.text()
-    const lines = text.split('\n').filter(line => line.trim())
+  const startSyncPolling = (jobId) => {
+    console.log('🔄 Starting batch processing...')
     
-    if (lines.length < 2) {
-      alert('CSV file is empty or invalid')
-      setUploading(false)
-      return
-    }
-    
-    setUploadProgress(`Parsing ${lines.length - 1} products...`)
-    
-    // Parse CSV (simple parsing - assumes comma-separated)
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
-    const products = []
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''))
-      const product = {}
-      
-      headers.forEach((header, index) => {
-        product[header] = values[index] || ''
-      })
-      
-      if (product.title || product.name) {
-        products.push(product)
+    const processNextBatch = async () => {
+      try {
+        console.log('📦 Requesting next batch...')
+        
+        const response = await fetch('/.netlify/functions/start-sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            jobId,
+            processNextBatch: true 
+          })
+        })
+
+        if (!response.ok) {
+          console.error('Batch processing error:', response.status)
+          return
+        }
+
+        const result = await response.json()
+        console.log('✅ Batch result:', result)
+
+        if (!result.done && result.hasMore) {
+          setTimeout(() => processNextBatch(), 1000)
+        }
+
+      } catch (error) {
+        console.error('Batch processing error:', error)
       }
     }
     
-    console.log(`Parsed ${products.length} products from CSV`)
-    setUploadProgress(`Uploading ${products.length} products...`)
+    processNextBatch()
     
-    // Upload to backend
-    const response = await fetch('/.netlify/functions/upload-csv', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        storeId: connectedStore.id,
-        products: products
-      })
-    })
+    const interval = setInterval(async () => {
+      try {
+        const { data: job, error } = await supabase
+          .from('sync_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single()
+        
+        if (error) {
+          console.error('Polling error:', error)
+          return
+        }
+        
+        setSyncJob(job)
+        
+        console.log(`📊 Progress: ${job.processed_products}/${job.total_products} (${job.status})`)
+        
+        if (job.status === 'completed') {
+          clearInterval(interval)
+          setSyncPolling(null)
+          setSyncing(false)
+          
+          alert(`🎉 Sync complete! Processed ${job.processed_products} products! Matching will start automatically.`)
+          
+          loadProducts(job.store_id)
+          setSyncJob(null)
+          
+        } else if (job.status === 'failed') {
+          clearInterval(interval)
+          setSyncPolling(null)
+          setSyncing(false)
+          
+          alert(`❌ Sync failed: ${job.error_message}`)
+          setSyncJob(null)
+        }
+        
+      } catch (error) {
+        console.error('Polling error:', error)
+      }
+    }, 2000)
     
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Upload failed')
-    }
-    
-    const result = await response.json()
-    
-    setUploadProgress('Matching cards to database...')
-    
-    // Wait a moment for processing
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    alert(`✅ Successfully uploaded ${result.count} products!`)
-    
-    // Reload products
-    loadProducts(connectedStore.id)
-    
-    setShowCSVUpload(false)
-    setCSVFile(null)
-    
-  } catch (error) {
-    console.error('CSV upload error:', error)
-    alert(`❌ Upload failed: ${error.message}`)
-  } finally {
-    setUploading(false)
-    setUploadProgress('')
+    setSyncPolling(interval)
   }
-}
+
+  useEffect(() => {
+    return () => {
+      if (syncPolling) {
+        clearInterval(syncPolling)
+      }
+    }
+  }, [syncPolling])
+
+  const handleCSVUpload = async (file) => {
+    if (!file) return
+    
+    setUploading(true)
+    setUploadProgress('Reading CSV file...')
+    
+    try {
+      const text = await file.text()
+      const lines = text.split('\n').filter(line => line.trim())
+      
+      if (lines.length < 2) {
+        alert('CSV file is empty or invalid')
+        setUploading(false)
+        return
+      }
+      
+      setUploadProgress(`Parsing ${lines.length - 1} products...`)
+      
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
+      const products = []
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''))
+        const product = {}
+        
+        headers.forEach((header, index) => {
+          product[header] = values[index] || ''
+        })
+        
+        if (product.title || product.name) {
+          products.push(product)
+        }
+      }
+      
+      console.log(`Parsed ${products.length} products from CSV`)
+      setUploadProgress(`Uploading ${products.length} products...`)
+      
+      const response = await fetch('/.netlify/functions/upload-csv', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          storeId: connectedStore.id,
+          products: products
+        })
+      })
+      
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Upload failed')
+      }
+      
+      const result = await response.json()
+      
+      setUploadProgress('Matching cards to database...')
+      
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      alert(`✅ Successfully uploaded ${result.count} products!`)
+      
+      loadProducts(connectedStore.id)
+      
+      setShowCSVUpload(false)
+      setCSVFile(null)
+      
+    } catch (error) {
+      console.error('CSV upload error:', error)
+      alert(`❌ Upload failed: ${error.message}`)
+    } finally {
+      setUploading(false)
+      setUploadProgress('')
+    }
+  }
 
   if (loading) {
     return (
@@ -456,8 +396,6 @@ const handleCSVUpload = async (file) => {
           Your professional deck builder dashboard
         </p>
 
-      
-
         {/* Connected Store Banner */}
         {connectedStore && (
           <div style={{
@@ -512,8 +450,8 @@ const handleCSVUpload = async (file) => {
           }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📊</div>
             <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '4px' }}>
-  {productCount}
-</h3>
+              {productCount}
+            </h3>
             <p style={{ color: '#888', fontSize: '14px' }}>Total Products</p>
           </div>
 
@@ -544,7 +482,7 @@ const handleCSVUpload = async (file) => {
           </div>
         </div>
 
-{/* Quick Actions */}
+        {/* Quick Actions */}
         <div style={{
           background: '#1a1a2e',
           border: '1px solid #2d2d44',
@@ -628,7 +566,7 @@ const handleCSVUpload = async (file) => {
           {connectedStore && (
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', flexDirection: 'column' }}>
               
-              {/* Sync Progress Bar */}
+              {/* Sync Progress Bar - UPDATED MESSAGE */}
               {syncing && syncJob && (
                 <div style={{
                   background: '#0a0a1f',
@@ -639,7 +577,7 @@ const handleCSVUpload = async (file) => {
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <span style={{ fontWeight: 'bold', color: '#00ff9d' }}>
-                      {syncJob.status === 'processing' ? '⏳ Syncing...' : '⏰ Starting...'}
+                      {syncJob.status === 'processing' ? '⏳ Auto-Syncing...' : '⏰ Starting...'}
                     </span>
                     <span style={{ color: '#fff' }}>
                       {syncJob.processed_products} / {syncJob.total_products} products
@@ -666,46 +604,34 @@ const handleCSVUpload = async (file) => {
                   <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
                     {Math.round((syncJob.processed_products / syncJob.total_products) * 100)}% complete
                   </p>
-                  {/* Add this NEW section */}
-<div style={{
-  marginTop: '12px',
-  padding: '12px',
-  background: '#0a0a1f',
-  border: '1px solid #2d2d44',
-  borderRadius: '8px',
-  fontSize: '0.85rem',
-  color: '#888'
-}}>
-  <span style={{ marginRight: '8px' }}>💡</span>
-  <strong style={{ color: '#00ff9d' }}>Tip:</strong> This sync runs in the background on our servers. 
-  Feel free to close this page and come back later - your progress is automatically saved!
-  {syncJob.total_products > 5000 && (
-    <span style={{ display: 'block', marginTop: '8px', fontSize: '0.8rem' }}>
-      ⏱️ Large sync detected - Estimated completion: ~{Math.ceil(syncJob.total_products / 250 * 3 / 60)} minutes
-    </span>
-  )}
-</div>
+                  
+                  {/* UPDATED TIP SECTION */}
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '12px',
+                    background: '#0a0a1f',
+                    border: '1px solid #2d2d44',
+                    borderRadius: '8px',
+                    fontSize: '0.85rem',
+                    color: '#888'
+                  }}>
+                    <span style={{ marginRight: '8px' }}>⚙️</span>
+                    <strong style={{ color: '#00ff9d' }}>Auto-syncing in progress!</strong> This happens automatically on our servers when you connect your store.
+                    <span style={{ display: 'block', marginTop: '8px', fontSize: '0.8rem' }}>
+                      ✨ After sync completes, all products will be automatically matched to Yu-Gi-Oh! cards.
+                    </span>
+                    {syncJob.total_products > 5000 && (
+                      <span style={{ display: 'block', marginTop: '8px', fontSize: '0.8rem' }}>
+                        ⏱️ Large sync detected - Estimated completion: ~{Math.ceil(syncJob.total_products / 250 * 3 / 60)} minutes
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
               
+              {/* REMOVED: Manual "Sync Products" Button */}
+              
               <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                <button 
-                  onClick={handleSyncProducts}
-                  disabled={syncing}
-                  style={{
-                    padding: '12px 24px',
-                    background: syncing ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: '#0a0a1f',
-                    fontWeight: 'bold',
-                    cursor: syncing ? 'not-allowed' : 'pointer',
-                    opacity: syncing ? 0.6 : 1
-                  }}
-                >
-                  {syncing ? 'Syncing...' : 'Sync Products'}
-                </button>
-
                 {/* CSV Upload Button */}
                 <button
                   onClick={() => setShowCSVUpload(true)}
@@ -746,8 +672,7 @@ const handleCSVUpload = async (file) => {
               </div>
             </div>
           )}
-          
-        </div>  {/* Closes "Quick Actions" div */}
+        </div>
         
         {/* CSV Upload Modal */}
         {showCSVUpload && (
@@ -894,7 +819,6 @@ const handleCSVUpload = async (file) => {
             </div>
           </div>
         )}
-
         
         {connectedStore && products.length > 0 && (
           <div style={{
@@ -913,189 +837,161 @@ const handleCSVUpload = async (file) => {
               gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
               gap: '20px'
             }}>
-             {products.slice(0, 12).map(product => {
-// Get price - check both variants array and direct price field
-const prices = product.variants?.map(v => parseFloat(v.price)) || []
-const minPrice = prices.length > 0 ? Math.min(...prices) : (product.price ? parseFloat(product.price) : null)
-const maxPrice = prices.length > 0 ? Math.max(...prices) : (product.price ? parseFloat(product.price) : null)
+              {products.slice(0, 12).map(product => {
+                const prices = product.variants?.map(v => parseFloat(v.price)) || []
+                const minPrice = prices.length > 0 ? Math.min(...prices) : (product.price ? parseFloat(product.price) : null)
+                const maxPrice = prices.length > 0 ? Math.max(...prices) : (product.price ? parseFloat(product.price) : null)
 
-const priceDisplay = minPrice && maxPrice
-  ? minPrice === maxPrice
-    ? `$${minPrice.toFixed(2)}`
-    : `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
-  : 'No price set'
-
-const totalInventory = product.variants?.reduce((sum, v) => 
-  sum + (v.inventory_quantity || 0), 0
-) || product.inventory_quantity || 0
-  
-  const stockStatus = totalInventory > 10 ? 'in-stock' 
-    : totalInventory > 0 ? 'low-stock' 
-    : 'out-of-stock'
-  
-  const stockColor = stockStatus === 'in-stock' ? '#00ff9d' 
-    : stockStatus === 'low-stock' ? '#ffd700' 
-    : '#e63946'
-
-  return (
-    <div key={product.id} style={{
-      background: '#0a0a1f',
-      border: '1px solid #2d2d44',
-      borderRadius: '12px',
-      padding: '16px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '12px',
-      position: 'relative'
-    }}>
-      {/* Stock Status Dot */}
-      <div style={{
-        position: 'absolute',
-        top: '12px',
-        right: '12px',
-        width: '12px',
-        height: '12px',
-        borderRadius: '50%',
-        background: stockColor,
-        boxShadow: `0 0 8px ${stockColor}`
-      }} title={stockStatus.replace('-', ' ')} />
-
-      {/* Product Image */}
-      {product.images && product.images[0] ? (
-        <img 
-          src={product.images[0].src} 
-          alt={product.title}
-          style={{
-            width: '100%',
-            height: '200px',
-            objectFit: 'cover',
-            borderRadius: '8px'
-          }}
-        />
-      ) : (
-        <div style={{
-          width: '100%',
-          height: '200px',
-          background: '#1a1a2e',
-          borderRadius: '8px',
+                const priceDisplay = minPrice && maxPrice
+                  ? minPrice === maxPrice
+                    ? `$${minPrice.toFixed(2)}`
+                    : `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`: 'No price set'
+                                const totalInventory = product.variants?.reduce((sum, v) => 
+              sum + (v.inventory_quantity || 0), 0
+            ) || product.inventory_quantity || 0            
+            const stockStatus = totalInventory > 10 ? 'in-stock' 
+              : totalInventory > 0 ? 'low-stock' 
+              : 'out-of-stock'            
+              const stockColor = stockStatus === 'in-stock' ? '#00ff9d' 
+              : stockStatus === 'low-stock' ? '#ffd700' 
+              : '#e63946'          
+                return (
+              <div key={product.id} style={{
+                background: '#0a0a1f',
+                border: '1px solid #2d2d44',
+                borderRadius: '12px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                position: 'relative'
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  top: '12px',
+                  right: '12px',
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  background: stockColor,
+                  boxShadow: `0 0 8px ${stockColor}`
+                }} title={stockStatus.replace('-', ' ')} />                {product.images && product.images[0] ? (
+                  <img 
+                    src={product.images[0].src} 
+                    alt={product.title}
+                    style={{
+                      width: '100%',
+                      height: '200px',
+                      objectFit: 'cover',
+                      borderRadius: '8px'
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: '100%',
+                    height: '200px',
+                    background: '#1a1a2e',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#555',
+                    fontSize: '3rem'
+                  }}>
+                    🃏
+                  </div>
+                )}                <div>
+                  <h4 style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: 'bold',
+                    marginBottom: '4px',
+                    color: '#fff',
+                    lineHeight: '1.3'
+                  }}>
+                    {product.title}
+                  </h4>
+                  {product.vendor && (
+                    <p style={{ fontSize: '0.85rem', color: '#888', marginBottom: '2px' }}>
+                      by {product.vendor}
+                    </p>
+                  )}
+                  {product.product_type && (
+                    <p style={{ fontSize: '0.85rem', color: '#888' }}>
+                      {product.product_type}
+                    </p>
+                  )}
+                </div>                <div style={{
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  color: '#00ff9d'
+                }}>
+                  {priceDisplay}
+                </div>                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  background: product.matched_card_name ? '#00ff9d22' : '#88888822',
+                  border: `1px solid ${product.matched_card_id ? '#00ff9d' : '#555'}`,
+                  color: product.matched_card_id ? '#00ff9d' : '#888',
+                  width: 'fit-content'
+                }}>
+                  <span>{product.matched_card_name ? '✅' : '⚠️'}</span>
+                  <span>{product.matched_card_name ? 'Matched' : 'Needs Matching'}</span>
+                </div>                <div style={{ 
+                  borderTop: '1px solid #2d2d44',
+                  paddingTop: '12px',
+                  marginTop: 'auto',
+                  fontSize: '0.85rem',
+                  color: '#888'
+                }}>
+                  {product.variants?.length || 0} variant(s) • {totalInventory} in stock
+                </div>
+              </div>
+            )
+          })}
+        </div>        <div style={{
           display: 'flex',
-          alignItems: 'center',
           justifyContent: 'center',
-          color: '#555',
-          fontSize: '3rem'
+          alignItems: 'center',
+          gap: '20px',
+          marginTop: '20px',
+          paddingTop: '20px',
+          borderTop: '1px solid #2d2d44'
         }}>
-          🃏
+          <p style={{ color: '#888', fontSize: '0.9rem' }}>
+            Showing {Math.min(12, products.length)} of {productCount} products
+          </p>
+          <button
+            onClick={() => navigate('/products')}
+            style={{
+              padding: '10px 20px',
+              background: 'transparent',
+              border: '1px solid #00ff9d',
+              borderRadius: '8px',
+              color: '#00ff9d',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              fontWeight: '500',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#00ff9d'
+              e.currentTarget.style.color = '#0a0a1f'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent'
+              e.currentTarget.style.color = '#00ff9d'
+            }}
+          >
+            Manage All Products →
+          </button>
         </div>
-      )}
-
-      {/* Product Info */}
-      <div>
-        <h4 style={{ 
-          fontSize: '1rem', 
-          fontWeight: 'bold',
-          marginBottom: '4px',
-          color: '#fff',
-          lineHeight: '1.3'
-        }}>
-          {product.title}
-        </h4>
-        {product.vendor && (
-          <p style={{ fontSize: '0.85rem', color: '#888', marginBottom: '2px' }}>
-            by {product.vendor}
-          </p>
-        )}
-        {product.product_type && (
-          <p style={{ fontSize: '0.85rem', color: '#888' }}>
-            {product.product_type}
-          </p>
-        )}
       </div>
-
-      {/* Price */}
-      <div style={{
-        fontSize: '1.1rem',
-        fontWeight: 'bold',
-        color: '#00ff9d'
-      }}>
-        {priceDisplay}
-      </div>
-
-      {/* Match Status Badge */}
-      <div style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        padding: '6px 12px',
-        borderRadius: '6px',
-        fontSize: '0.85rem',
-background: product.matched_card_name ? '#00ff9d22' : '#88888822',
-        border: `1px solid ${product.matched_card_id ? '#00ff9d' : '#555'}`,
-        color: product.matched_card_id ? '#00ff9d' : '#888',
-        width: 'fit-content'
-      }}>
-      <span>{product.matched_card_name ? '✅' : '⚠️'}</span>
-<span>{product.matched_card_name ? 'Matched' : 'Needs Matching'}</span>
-      </div>
-
-      {/* Variants Info */}
-      <div style={{ 
-        borderTop: '1px solid #2d2d44',
-        paddingTop: '12px',
-        marginTop: 'auto',
-        fontSize: '0.85rem',
-        color: '#888'
-      }}>
-        {product.variants?.length || 0} variant(s) • {totalInventory} in stock
-      </div>
-    </div>
-  )
-})}
-               
-            </div>
-
-           <div style={{
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  gap: '20px',
-  marginTop: '20px',
-  paddingTop: '20px',
-  borderTop: '1px solid #2d2d44'
-}}>
-  <p style={{ color: '#888', fontSize: '0.9rem' }}>
-    Showing {Math.min(12, products.length)} of {productCount} products
-  </p>
-  <button
-    onClick={() => navigate('/products')}
-    style={{
-      padding: '10px 20px',
-      background: 'transparent',
-      border: '1px solid #00ff9d',
-      borderRadius: '8px',
-      color: '#00ff9d',
-      cursor: 'pointer',
-      fontSize: '0.9rem',
-      fontWeight: '500',
-      transition: 'all 0.2s'
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.background = '#00ff9d'
-      e.currentTarget.style.color = '#0a0a1f'
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.background = 'transparent'
-      e.currentTarget.style.color = '#00ff9d'
-    }}
-  >
-    Manage All Products →
-  </button>
+    )}
+  </div>
 </div>
-          </div>
-        )}
-
-      </div>          
-    </div>          // ← Outer container closes here
-  )
-}
-
-export default Dashboard
+)
+}export default Dashboard

@@ -1,24 +1,18 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate } from 'react-router-dom'
-import MatchModal from '../components/MatchModal'  // ← Added this (real component now)
-
-
+import MatchModal from '../components/MatchModal'
 
 function Products() {
   const [user, setUser] = useState(null)
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [filterStatus, setFilterStatus] = useState('all') // all, matched, unmatched
+  const [filterStatus, setFilterStatus] = useState('all')
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [matchModalOpen, setMatchModalOpen] = useState(false)
-    const [autoMatching, setAutoMatching] = useState(false)  // ← Add this
-  const [matchProgress, setMatchProgress] = useState({ current: 0, total: 0 })  // ← Add this
-
   const [currentPage, setCurrentPage] = useState(1)
-const [itemsPerPage] = useState(50)  // Show 50 products per page
-
+  const [itemsPerPage] = useState(50)
 
   const navigate = useNavigate()
 
@@ -36,83 +30,79 @@ const [itemsPerPage] = useState(50)  // Show 50 products per page
     fetchProducts(session.user.id)
   }
 
-async function fetchProducts(userId) {
-  console.log('fetchProducts called with userId:', userId)
-  setLoading(true)
-  
-  try {
-    const { data: store, error: storeError } = await supabase
-      .from('connected_stores')
-      .select('id')
-      .eq('user_id', userId)
-      .single()
+  async function fetchProducts(userId) {
+    console.log('fetchProducts called with userId:', userId)
+    setLoading(true)
+    
+    try {
+      const { data: store, error: storeError } = await supabase
+        .from('connected_stores')
+        .select('id')
+        .eq('user_id', userId)
+        .single()
 
-    if (storeError) {
-      console.error('Store lookup error:', storeError)
-      setProducts([])
-      setLoading(false)
-      return
-    }
-
-    console.log('Found store:', store.id)
-
-    // Fetch ALL products in batches
-    let allProducts = []
-    let hasMore = true
-    let offset = 0
-    const batchSize = 1000
-
-    while (hasMore) {
-      const { data, error } = await supabase
-        .from('products')
-        .select(`
-          *,
-          card_image:yugioh_cards!products_matched_card_id_fkey (
-            image_url_small
-          )
-        `)
-        .eq('store_id', store.id)
-.order('updated_at', { ascending: false })  // Most recently changed first
-        .range(offset, offset + batchSize - 1)
-
-      if (error) {
-        console.error('Error fetching products:', error)
-        break
+      if (storeError) {
+        console.error('Store lookup error:', storeError)
+        setProducts([])
+        setLoading(false)
+        return
       }
 
-      if (data && data.length > 0) {
-        allProducts = [...allProducts, ...data]
-        offset += batchSize
-        console.log(`Fetched ${allProducts.length} products so far...`)
-        
-        // If we got fewer than batchSize, we're done
-        if (data.length < batchSize) {
+      console.log('Found store:', store.id)
+
+      let allProducts = []
+      let hasMore = true
+      let offset = 0
+      const batchSize = 1000
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('products')
+          .select(`
+            *,
+            card_image:yugioh_cards!products_matched_card_id_fkey (
+              image_url_small
+            )
+          `)
+          .eq('store_id', store.id)
+          .order('updated_at', { ascending: false })
+          .range(offset, offset + batchSize - 1)
+
+        if (error) {
+          console.error('Error fetching products:', error)
+          break
+        }
+
+        if (data && data.length > 0) {
+          allProducts = [...allProducts, ...data]
+          offset += batchSize
+          console.log(`Fetched ${allProducts.length} products so far...`)
+          
+          if (data.length < batchSize) {
+            hasMore = false
+          }
+        } else {
           hasMore = false
         }
-      } else {
-        hasMore = false
       }
+
+      console.log('✅ Total products fetched:', allProducts.length)
+      console.log('Matched products:', allProducts.filter(p => p.matched_card_name).length)
+      setProducts(allProducts)
+
+    } catch (error) {
+      console.error('Error in fetchProducts:', error)
+    } finally {
+      setLoading(false)
     }
-
-    console.log('✅ Total products fetched:', allProducts.length)
-    console.log('Matched products:', allProducts.filter(p => p.matched_card_name).length)
-    setProducts(allProducts)
-
-  } catch (error) {
-    console.error('Error in fetchProducts:', error)
-  } finally {
-    setLoading(false)
   }
-}
 
   function openMatchModal(product) {
-      console.log('Opening match modal for product:', product)
-
+    console.log('Opening match modal for product:', product)
     setSelectedProduct(product)
     setMatchModalOpen(true)
   }
 
-  // Filter products
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.title.toLowerCase().includes(searchQuery.toLowerCase())
     
@@ -127,17 +117,14 @@ async function fetchProducts(userId) {
   const matchedCount = products.filter(p => p.matched_card_name).length
   const unmatchedCount = products.length - matchedCount
 
-  // Pagination
-const totalPages = Math.ceil(filteredProducts.length / itemsPerPage)
-const startIndex = (currentPage - 1) * itemsPerPage
-const endIndex = startIndex + itemsPerPage
-const paginatedProducts = filteredProducts.slice(startIndex, endIndex)
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex)
 
-// Reset to page 1 when filters change
-useEffect(() => {
-  setCurrentPage(1)
-}, [searchQuery, filterStatus])
-
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, filterStatus])
 
   if (loading) {
     return (
@@ -150,105 +137,12 @@ useEffect(() => {
         color: '#fff'
       }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>Card</div>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🃏</div>
           <p>Loading products...</p>
         </div>
       </div>
     )
   }
-
-async function handleMatchAll() {
-  const confirmed = confirm(
-    `This will attempt to match ALL 14,010 products to Yu-Gi-Oh cards. This may take several minutes. Continue?`
-  )
-  
-  if (!confirmed) return
-
-  setAutoMatching(true)
-  setMatchProgress({ current: 0, total: 14010 })
-
-  try {
-    // Get store ID first
-    const { data: store } = await supabase
-      .from('connected_stores')
-      .select('id')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!store) {
-      throw new Error('Store not found')
-    }
-
-    console.log('🏪 Store ID:', store.id)
-
-    // Get user's session token
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      throw new Error('Not authenticated')
-    }
-
-    let totalMatched = 0
-    let totalFailed = 0
-    let hasMore = true
-
-    // Process in batches until done
-    while (hasMore) {
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-all-products`
-      console.log('🔗 Calling:', url)
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`  // ← Changed this!
-        },
-        body: JSON.stringify({
-          storeId: store.id,
-          batchSize: 100
-        })
-      })
-
-      console.log('📡 Response status:', response.status)
-      
-      const result = await response.json()
-      console.log('📦 Response data:', result)
-
-      if (!result.success) {
-        throw new Error(result.error || 'Matching failed')
-      }
-
-      totalMatched += result.matched
-      totalFailed += result.failed
-      hasMore = result.hasMore
-
-      // Update progress
-      const processed = totalMatched + totalFailed
-      setMatchProgress({ current: processed, total: 14010 })
-
-      console.log(`Progress: ${processed}/14010 (${result.remaining} remaining)`)
-
-      // Small delay between batches
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
-
-    alert(
-      `Matching complete!\n\n` +
-      `✅ Successfully matched: ${totalMatched}\n` +
-      `❌ Failed to match: ${totalFailed}\n\n` +
-      `Refreshing products...`
-    )
-
-    // Refresh products
-    await fetchProducts(user.id)
-
-  } catch (error) {
-    console.error('❌ Full error:', error)
-    alert('Matching failed: ' + error.message)
-  } finally {
-    setAutoMatching(false)
-    setMatchProgress({ current: 0, total: 0 })
-  }
-}
 
   return (
     <div style={{
@@ -340,12 +234,8 @@ async function handleMatchAll() {
             display: 'flex',
             gap: '20px',
             flexWrap: 'wrap',
-            alignItems: 'center',
-                        justifyContent: 'space-between'  // ← Change this
-
+            alignItems: 'center'
           }}>
-                        <div style={{ display: 'flex', gap: '20px', flex: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-
             {/* Search */}
             <input
               type="text"
@@ -413,67 +303,13 @@ async function handleMatchAll() {
               >
                 Unmatched ({unmatchedCount})
               </button>
-       </div>
+            </div>
+            
+            {/* REMOVED: Match All Button */}
           </div>
-
-          {/* Match All Button - ADD THIS */}
-          {unmatchedCount > 0 && (
-            <button
-              onClick={handleMatchAll}
-              disabled={autoMatching}
-              style={{
-                padding: '12px 24px',
-                background: autoMatching ? '#555' : 'linear-gradient(135deg, #00ff9d, #2a9d8f)',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#0a0a1f',
-                cursor: autoMatching ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                fontSize: '1rem',
-                opacity: autoMatching ? 0.6 : 1,
-                whiteSpace: 'nowrap'
-              }}
-            >
-              {autoMatching 
-                ? `Matching ${matchProgress.current}/${matchProgress.total}...` 
-                : `🪄 Match All (${unmatchedCount})`
-              }
-            </button>
-          )}
         </div>
-      </div>
 
-{/* Progress Bar - ADD THIS */}
-        {autoMatching && (
-          <div style={{
-            background: '#1a1a2e',
-            border: '1px solid #2d2d44',
-            borderRadius: '12px',
-            padding: '20px',
-            marginBottom: '30px'
-          }}>
-            <div style={{ marginBottom: '12px', color: '#fff', fontSize: '1rem' }}>
-              Auto-matching products... {matchProgress.current} of {matchProgress.total}
-            </div>
-            <div style={{
-              width: '100%',
-              height: '8px',
-              background: '#0a0a1f',
-              borderRadius: '4px',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                width: `${(matchProgress.current / matchProgress.total) * 100}%`,
-                height: '100%',
-                background: 'linear-gradient(90deg, #00ff9d, #2a9d8f)',
-                transition: 'width 0.3s ease'
-              }} />
-            </div>
-            <div style={{ marginTop: '8px', color: '#888', fontSize: '0.85rem' }}>
-              Please don't close this page...
-            </div>
-          </div>
-        )}
+        {/* REMOVED: Auto-matching Progress Bar */}
 
         {/* Products Table */}
         <div style={{
@@ -488,7 +324,7 @@ async function handleMatchAll() {
               textAlign: 'center',
               color: '#888'
             }}>
-              <div style={{ fontSize: '3rem', marginBottom: '20px' }}>Search</div>
+              <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🔍</div>
               <p>No products found</p>
             </div>
           ) : (
@@ -516,7 +352,7 @@ async function handleMatchAll() {
                 </tr>
               </thead>
               <tbody>
-{paginatedProducts.map(product => {
+                {paginatedProducts.map(product => {
                   const prices = product.variants?.map(v => parseFloat(v.price)) || []
                   const price = prices.length > 0 ? Math.min(...prices) : null
 
@@ -533,49 +369,45 @@ async function handleMatchAll() {
                       {/* Product Info */}
                       <td style={{ padding: '16px' }}>
                         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                   {/* NEW CODE - Product Image with Card Fallback */}
-{product.images && product.images[0] ? (
-  // Use Shopify image if available
-  <img
-    src={product.images[0].src}
-    alt={product.title}
-    style={{
-      width: '50px',
-      height: '50px',
-      objectFit: 'cover',
-      borderRadius: '8px',
-      border: '1px solid #2d2d44'
-    }}
-  />
-) : product.card_image?.image_url_small ? (
-  // Fallback to Yu-Gi-Oh card image from database
-  <img
-    src={product.card_image.image_url_small}
-    alt={product.title}
-    style={{
-      width: '50px',
-      height: '73px',  // Card aspect ratio
-      objectFit: 'cover',
-      borderRadius: '4px',
-      border: '1px solid #2d2d44'
-    }}
-  />
-) : (
-  // No image available - show placeholder
-  <div style={{
-    width: '50px',
-    height: '50px',
-    background: '#0a0a1f',
-    borderRadius: '8px',
-    border: '1px solid #2d2d44',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '1.5rem'
-  }}>
-    🃏
-  </div>
-)}
+                          {product.images && product.images[0] ? (
+                            <img
+                              src={product.images[0].src}
+                              alt={product.title}
+                              style={{
+                                width: '50px',
+                                height: '50px',
+                                objectFit: 'cover',
+                                borderRadius: '8px',
+                                border: '1px solid #2d2d44'
+                              }}
+                            />
+                          ) : product.card_image?.image_url_small ? (
+                            <img
+                              src={product.card_image.image_url_small}
+                              alt={product.title}
+                              style={{
+                                width: '50px',
+                                height: '73px',
+                                objectFit: 'cover',
+                                borderRadius: '4px',
+                                border: '1px solid #2d2d44'
+                              }}
+                            />
+                          ) : (
+                            <div style={{
+                              width: '50px',
+                              height: '50px',
+                              background: '#0a0a1f',
+                              borderRadius: '8px',
+                              border: '1px solid #2d2d44',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '1.5rem'
+                            }}>
+                              🃏
+                            </div>
+                          )}
                           <div>
                             <div style={{ color: '#fff', fontWeight: '500', marginBottom: '4px' }}>
                               {product.title}
@@ -652,35 +484,34 @@ async function handleMatchAll() {
                       </td>
 
                       {/* Action Button */}
-                    {/* Action Button */}
-<td style={{ padding: '16px', textAlign: 'right' }}>
-  <button
-    onClick={() => {
-      console.log('Match button clicked for:', product.title)
-      openMatchModal(product)
-    }}
-    style={{
-      padding: '8px 16px',
-      borderRadius: '8px',
-      border: '1px solid #2d2d44',
-      background: '#0a0a1f',
-      color: '#00ff9d',
-      cursor: 'pointer',
-      fontSize: '0.9rem',
-      transition: 'all 0.2s'
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.background = '#00ff9d'
-      e.currentTarget.style.color = '#0a0a1f'
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.background = '#0a0a1f'
-      e.currentTarget.style.color = '#00ff9d'
-    }}
-  >
-    {product.matched_card_name ? 'Edit Match' : 'Match Card'}
-  </button>
-</td>
+                      <td style={{ padding: '16px', textAlign: 'right' }}>
+                        <button
+                          onClick={() => {
+                            console.log('Match button clicked for:', product.title)
+                            openMatchModal(product)
+                          }}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: '1px solid #2d2d44',
+                            background: '#0a0a1f',
+                            color: '#00ff9d',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#00ff9d'
+                            e.currentTarget.style.color = '#0a0a1f'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#0a0a1f'
+                            e.currentTarget.style.color = '#00ff9d'
+                          }}
+                        >
+                          {product.matched_card_name ? 'Edit Match' : 'Match Card'}
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -689,7 +520,7 @@ async function handleMatchAll() {
           )}
         </div>
 
-{/* Pagination */}
+        {/* Pagination */}
         {totalPages > 1 && (
           <div style={{
             background: '#1a1a2e',
@@ -746,25 +577,24 @@ async function handleMatchAll() {
         )}
       </div>
 
-    {matchModalOpen && selectedProduct && (
-  <MatchModal
-    product={selectedProduct}
-    onClose={() => {
-      setMatchModalOpen(false)
-      setSelectedProduct(null)
-    }}
-    onSave={async () => {  // ← Replace this callback
-      console.log('onSave callback triggered!')
-      setMatchModalOpen(false)
-      setSelectedProduct(null)
-      
-      // Force a clean refresh
-      setLoading(true)
-      await fetchProducts(user.id)
-      console.log('Products refreshed')
-    }}
-  />
-)}
+      {matchModalOpen && selectedProduct && (
+        <MatchModal
+          product={selectedProduct}
+          onClose={() => {
+            setMatchModalOpen(false)
+            setSelectedProduct(null)
+          }}
+          onSave={async () => {
+            console.log('onSave callback triggered!')
+            setMatchModalOpen(false)
+            setSelectedProduct(null)
+            
+            setLoading(true)
+            await fetchProducts(user.id)
+            console.log('Products refreshed')
+          }}
+        />
+      )}
     </div>
   )
 }
