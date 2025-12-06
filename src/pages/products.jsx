@@ -67,6 +67,8 @@ async function fetchProducts(userId) {
       `)
       .eq('store_id', store.id)
       .order('title', { ascending: true })
+        .range(0, 15000)  // ← ADD THIS
+
 
     if (error) {
       console.error('Error fetching products:', error)
