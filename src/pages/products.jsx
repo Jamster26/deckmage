@@ -72,7 +72,7 @@ async function fetchProducts(userId) {
           )
         `)
         .eq('store_id', store.id)
-        .order('title', { ascending: true })
+.order('updated_at', { ascending: false })  // Most recently changed first
         .range(offset, offset + batchSize - 1)
 
       if (error) {
