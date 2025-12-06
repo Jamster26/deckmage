@@ -895,21 +895,20 @@ const handleCSVUpload = async (file) => {
               gap: '20px'
             }}>
              {products.slice(0, 12).map(product => {
-  // Calculate price range from variants
-  const prices = product.variants?.map(v => parseFloat(v.price)) || []
-  const minPrice = prices.length > 0 ? Math.min(...prices) : null
-  const maxPrice = prices.length > 0 ? Math.max(...prices) : null
-  
-  const priceDisplay = minPrice && maxPrice
-    ? minPrice === maxPrice
-      ? `$${minPrice.toFixed(2)}`
-      : `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
-    : 'No price set'
+// Get price - check both variants array and direct price field
+const prices = product.variants?.map(v => parseFloat(v.price)) || []
+const minPrice = prices.length > 0 ? Math.min(...prices) : (product.price ? parseFloat(product.price) : null)
+const maxPrice = prices.length > 0 ? Math.max(...prices) : (product.price ? parseFloat(product.price) : null)
 
-  // Check stock status
-  const totalInventory = product.variants?.reduce((sum, v) => 
-    sum + (v.inventory_quantity || 0), 0
-  ) || 0
+const priceDisplay = minPrice && maxPrice
+  ? minPrice === maxPrice
+    ? `$${minPrice.toFixed(2)}`
+    : `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`
+  : 'No price set'
+
+const totalInventory = product.variants?.reduce((sum, v) => 
+  sum + (v.inventory_quantity || 0), 0
+) || product.inventory_quantity || 0
   
   const stockStatus = totalInventory > 10 ? 'in-stock' 
     : totalInventory > 0 ? 'low-stock' 
