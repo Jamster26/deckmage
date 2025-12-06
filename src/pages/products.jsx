@@ -56,27 +56,48 @@ async function fetchProducts(userId) {
 
     console.log('Found store:', store.id)
 
-    // Get products WITH card images from yugioh_cards table
-    const { data, error } = await supabase
-      .from('products')
-      .select(`
-        *,
-        card_image:yugioh_cards!products_matched_card_id_fkey (
-          image_url_small
-        )
-      `)
-      .eq('store_id', store.id)
-      .order('title', { ascending: true })
-        .range(0, 15000)  // ← ADD THIS
+    // Fetch ALL products in batches
+    let allProducts = []
+    let hasMore = true
+    let offset = 0
+    const batchSize = 1000
 
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          card_image:yugioh_cards!products_matched_card_id_fkey (
+            image_url_small
+          )
+        `)
+        .eq('store_id', store.id)
+        .order('title', { ascending: true })
+        .range(offset, offset + batchSize - 1)
 
-    if (error) {
-      console.error('Error fetching products:', error)
-    } else {
-      console.log('Fetched products:', data.length)
-      console.log('Matched products:', data.filter(p => p.matched_card_name).length)
-      setProducts(data || [])
+      if (error) {
+        console.error('Error fetching products:', error)
+        break
+      }
+
+      if (data && data.length > 0) {
+        allProducts = [...allProducts, ...data]
+        offset += batchSize
+        console.log(`Fetched ${allProducts.length} products so far...`)
+        
+        // If we got fewer than batchSize, we're done
+        if (data.length < batchSize) {
+          hasMore = false
+        }
+      } else {
+        hasMore = false
+      }
     }
+
+    console.log('✅ Total products fetched:', allProducts.length)
+    console.log('Matched products:', allProducts.filter(p => p.matched_card_name).length)
+    setProducts(allProducts)
+
   } catch (error) {
     console.error('Error in fetchProducts:', error)
   } finally {
