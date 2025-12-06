@@ -102,21 +102,25 @@ const [csvFile, setCSVFile] = useState(null)
     initiateShopifyOAuth(cleanDomain)
   }
 
-  const handleDisconnect = async () => {
-    if (!confirm('Are you sure you want to disconnect your Shopify store?')) {
-      return
-    }
-
-    const { error } = await supabase
-      .from('connected_stores')
-      .delete()
-      .eq('id', connectedStore.id)
-
-    if (!error) {
-      setConnectedStore(null)
-      alert('Store disconnected successfully')
-    }
+const handleDisconnect = async () => {
+  if (!confirm('Are you sure you want to disconnect your Shopify store?')) {
+    return
   }
+
+  const { error } = await supabase
+    .from('connected_stores')
+    .delete()
+    .eq('id', connectedStore.id)
+
+  if (!error) {
+    setConnectedStore(null)
+    setProducts([])
+    setProductCount(0)
+    alert('Store disconnected successfully')
+    // Force reload to clear all state
+    window.location.reload()
+  }
+}
 
  const [syncJob, setSyncJob] = useState(null)
 const [syncPolling, setSyncPolling] = useState(null)
