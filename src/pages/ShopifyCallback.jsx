@@ -69,38 +69,37 @@ function ShopifyCallback() {
 
       if (error) throw error
 
-      // 🆕 NEW: AUTO-SYNC PRODUCTS IMMEDIATELY
-      setStatus('Syncing your products...')
-      
-      try {
-        console.log('🔄 Starting auto-sync...')
-        
-        const syncResponse = await fetch('/.netlify/functions/sync-shopify-products', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            storeId: storeData.id,
-            accessToken: accessToken,
-            shopDomain: shop,
-          }),
-        })
+    // 🆕 NEW: AUTO-START SYNC JOB IN BACKGROUND
+setStatus('Starting product sync in background...')
 
-        if (!syncResponse.ok) {
-          console.error('Sync failed (non-critical):', await syncResponse.text())
-          // Don't throw - allow user to manually sync later
-        } else {
-          const syncData = await syncResponse.json()
-          console.log('✅ Auto-sync complete:', syncData)
-          setStatus(`Success! Synced ${syncData.productsCount} products.`)
-        }
-        
-      } catch (syncError) {
-        console.error('⚠️ Auto-sync failed (non-critical):', syncError)
-        // Don't block the OAuth flow if sync fails
-        setStatus('Connected! Click "Sync Products" to import your inventory.')
-      }
+try {
+  console.log('🔄 Starting auto-sync job...')
+  
+  const syncResponse = await fetch('/.netlify/functions/start-sync', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      storeId: storeData.id,
+      accessToken: accessToken,
+      shopDomain: shop,
+    }),
+  })
+
+  if (!syncResponse.ok) {
+    console.error('Sync job creation failed:', await syncResponse.text())
+    setStatus('Connected! Please click "Sync Products" on the dashboard.')
+  } else {
+    const syncData = await syncResponse.json()
+    console.log('✅ Sync job started:', syncData.jobId)
+    setStatus(`Success! Syncing ${syncData.totalProducts} products in background...`)
+  }
+  
+} catch (syncError) {
+  console.error('⚠️ Auto-sync failed (non-critical):', syncError)
+  setStatus('Connected! Click "Sync Products" to import your inventory.')
+}
 
       // Clean up
       sessionStorage.removeItem('shopify_oauth_state')

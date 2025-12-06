@@ -164,6 +164,33 @@ serve(async (req) => {
 
     console.log(`✅ Batch complete: ${newProcessed}/${job.total_products}, isComplete: ${isComplete}`)
 
+    // 🆕 AUTO-TRIGGER MATCHING WHEN SYNC COMPLETES
+    if (isComplete) {
+      console.log('🎯 Sync complete! Auto-triggering matching job...')
+      
+      try {
+        const matchResponse = await fetch(`${supabaseUrl}/functions/v1/match-all-products`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`
+          },
+          body: JSON.stringify({
+            storeId: store.id,
+            batchSize: 100
+          })
+        })
+
+        if (matchResponse.ok) {
+          console.log('✅ Matching job triggered successfully!')
+        } else {
+          console.error('⚠️ Failed to trigger matching (non-critical)')
+        }
+      } catch (matchError) {
+        console.error('⚠️ Error triggering matching:', matchError)
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
