@@ -108,24 +108,15 @@ const handleDisconnect = async () => {
   }
 
   try {
-    // Delete all products first
-    const { error: productsError } = await supabase
-      .from('products')
-      .delete()
-      .eq('store_id', connectedStore.id)
+    const response = await fetch('/.netlify/functions/disconnect-store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeId: connectedStore.id })
+    })
 
-    if (productsError) {
-      console.error('Error deleting products:', productsError)
-    }
-
-    // Then delete the store
-    const { error: storeError } = await supabase
-      .from('connected_stores')
-      .delete()
-      .eq('id', connectedStore.id)
-
-    if (storeError) {
-      throw storeError
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to disconnect')
     }
 
     // Clear all state
@@ -135,15 +126,14 @@ const handleDisconnect = async () => {
     setSyncJob(null)
     setSyncing(false)
 
-    // Show success message
     alert('Store disconnected successfully')
 
-    // Force full reload to clear everything
+    // Force navigation
     window.location.href = '/dashboard'
     
   } catch (error) {
     console.error('Disconnect error:', error)
-    alert('Error disconnecting store. Please try again.')
+    alert(`Error: ${error.message}`)
   }
 }
 
