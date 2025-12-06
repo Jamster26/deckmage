@@ -188,25 +188,27 @@ serve(async (req) => {
 
   console.log(`✅ Batch complete: ${successCount} matched, ${failCount} failed, ${remainingCount} remaining`)
 
-    // 🆕 AUTO-TRIGGER NEXT BATCH IF MORE WORK TO DO
-    if ((remainingCount || 0) > 0) {
-      console.log('🔄 More products to match, triggering next batch...')
-      
-      // Trigger next batch asynchronously (don't await)
-      fetch(`${supabaseUrl}/functions/v1/match-all-products`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`
-        },
-        body: JSON.stringify({
-          storeId: storeId,
-          batchSize: batchSize
-        })
-      }).catch(err => console.error('Failed to trigger next batch:', err))
-    } else {
-      console.log('🎉 All products matched!')
-    }
+  // 🆕 AUTO-TRIGGER NEXT BATCH IF MORE WORK TO DO
+if ((remainingCount || 0) > 0) {
+  console.log('🔄 More products to match, triggering next batch in 2 seconds...')
+  
+  // Wait 2 seconds before triggering next batch (prevents race conditions)
+  setTimeout(() => {
+    fetch(`${supabaseUrl}/functions/v1/match-all-products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`
+      },
+      body: JSON.stringify({
+        storeId: storeId,
+        batchSize: batchSize
+      })
+    }).catch(err => console.error('Failed to trigger next batch:', err))
+  }, 2000)
+} else {
+  console.log('🎉 All products matched!')
+}
 
     return new Response(
       JSON.stringify({ 
